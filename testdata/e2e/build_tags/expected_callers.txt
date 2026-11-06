@@ -1,0 +1,2 @@
+main.Plain: main.main
+# main.Special is not analyzed (excluded by build tags).
