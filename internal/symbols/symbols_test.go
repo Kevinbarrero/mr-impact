@@ -69,6 +69,62 @@ func TestSignatureChange(t *testing.T) {
 	}
 }
 
+// Parameter and result names are not part of the API: renaming them is a body
+// change, while any change to types (params, results, variadic, receiver, type
+// parameters) is a signature change.
+func TestSignatureComparesTypesOnly(t *testing.T) {
+	const base = `package p
+
+type L[T any] struct{}
+
+func (l *L[T]) M(a int, rest ...string) (n int, err error) { return 0, nil }
+
+func G[T any](x T) {}
+
+func H(a, b int) {}
+`
+	cases := []struct {
+		name, old, new string
+		want           Kind
+	}{
+		{"param rename", "M(a int,", "M(b int,", Body},
+		{"variadic rename", "rest ...string", "more ...string", Body},
+		{"result rename", "(n int, err error)", "(count int, e error)", Body},
+		{"named to unnamed results", "(n int, err error)", "(int, error)", Body},
+		{"receiver name", "(l *L[T])", "(r *L[T])", Body},
+		{"ungrouped params", "H(a, b int)", "H(a int, b int)", Body},
+		{"grouped param type", "H(a, b int)", "H(a, b int64)", Signature},
+		{"param type", "M(a int,", "M(a int64,", Signature},
+		{"variadic to slice", "rest ...string", "rest []string", Signature},
+		{"added result", "(n int, err error)", "(n int, ok bool, err error)", Signature},
+		{"result type", "(n int, err error)", "(n int64, err error)", Signature},
+		{"receiver pointerness", "(l *L[T])", "(l L[T])", Signature},
+		{"type param constraint", "G[T any]", "G[T comparable]", Signature},
+		{"type param name", "G[T any](x T)", "G[U any](x U)", Signature},
+		{"param order", "M(a int, rest ...string)", "M(rest string, a ...int)", Signature},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			head := strings.Replace(base, c.old, c.new, 1)
+			if head == base {
+				t.Fatalf("replacement %q not found", c.old)
+			}
+			line := 5
+			switch c.old[0] {
+			case 'G':
+				line = 7
+			case 'H':
+				line = 9
+			}
+			r := run(t, []diff.FileChange{mod("p/p.go", []int{line}, []int{line})},
+				files{"p/p.go": head}, files{"p/p.go": base})
+			if len(r.Funcs) != 1 || r.Funcs[0].Kind != c.want {
+				t.Fatalf("%+v", r.Funcs)
+			}
+		})
+	}
+}
+
 func TestNewFunc(t *testing.T) {
 	head := pricingBase + "\nfunc added() {}\n"
 	r := run(t, []diff.FileChange{mod("pricing/p.go", []int{11, 12}, nil)},
