@@ -127,7 +127,11 @@ func (c *Client) once(ctx context.Context, hc *http.Client, method, u string, pa
 		return nil, nil, true, fmt.Errorf("gitlab: %s %s: %w", method, u, err)
 	}
 	defer resp.Body.Close()
-	data, err = io.ReadAll(resp.Body)
+	body := io.Reader(resp.Body)
+	if resp.StatusCode >= 400 { // only a snippet of an error body is used
+		body = io.LimitReader(resp.Body, 1<<20)
+	}
+	data, err = io.ReadAll(body)
 	if err != nil {
 		return nil, nil, true, fmt.Errorf("gitlab: read response: %w", err)
 	}
