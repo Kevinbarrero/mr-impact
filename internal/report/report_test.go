@@ -202,3 +202,26 @@ func TestDepth2Edge(t *testing.T) {
 		t.Errorf("edges wrong:\n%s", out)
 	}
 }
+
+// Callers are distinct per (Display, Pkg): main.run in two commands is two
+// callers, while a repeat within one package is still deduplicated.
+func TestCallerDedupKeepsPackages(t *testing.T) {
+	m := Model{
+		Funcs: []FuncRow{{Level: risk.Red, Display: "a.T", Kind: "body", CoverText: "n/a", Callers: []callgraph.Caller{
+			{Display: "main.run", Pkg: "ex.com/cmd/api", Depth: 1, Via: "a.T"},
+			{Display: "main.run", Pkg: "ex.com/cmd/worker", Depth: 1, Via: "a.T"},
+			{Display: "main.run", Pkg: "ex.com/cmd/worker", Depth: 2, Via: "a.T"},
+		}}},
+		Coverage: "static", Version: "0.1.0",
+	}
+	out := Render(m)
+	if !strings.Contains(out, "| 🔴 | `a.T` | body | 2 (2 pkgs) | n/a |") {
+		t.Errorf("callers cell wrong:\n%s", out)
+	}
+	if !strings.Contains(out, "All callers (2)") || !strings.Contains(out, "**`a.T`** (2)") {
+		t.Errorf("all-callers counts wrong:\n%s", out)
+	}
+	if n := strings.Count(out, `["main.run"]`); n != 1 {
+		t.Errorf("diagram has %d main.run nodes, want 1:\n%s", n, out)
+	}
+}

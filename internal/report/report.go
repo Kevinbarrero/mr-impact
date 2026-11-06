@@ -160,21 +160,25 @@ func sortedFuncs(in []FuncRow) []FuncRow {
 	return out
 }
 
-// dedupeCallers returns callers sorted by (Depth, Display), one per Display
-// (the nearest occurrence wins).
+// dedupeCallers returns callers sorted by (Depth, Display, Pkg), one per
+// (Display, Pkg) (the nearest occurrence wins): same-named functions in
+// different packages, e.g. main.run in two commands, are distinct callers.
 func dedupeCallers(cs []callgraph.Caller) []callgraph.Caller {
 	s := append([]callgraph.Caller(nil), cs...)
 	sort.SliceStable(s, func(i, j int) bool {
 		if s[i].Depth != s[j].Depth {
 			return s[i].Depth < s[j].Depth
 		}
-		return s[i].Display < s[j].Display
+		if s[i].Display != s[j].Display {
+			return s[i].Display < s[j].Display
+		}
+		return s[i].Pkg < s[j].Pkg
 	})
 	seen := map[string]bool{}
 	out := s[:0]
 	for _, c := range s {
-		if !seen[c.Display] {
-			seen[c.Display] = true
+		if k := c.Display + "\x00" + c.Pkg; !seen[k] {
+			seen[k] = true
 			out = append(out, c)
 		}
 	}
