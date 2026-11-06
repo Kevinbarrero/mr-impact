@@ -61,7 +61,7 @@ type fn struct {
 	display    string
 	file       string
 	start, end int
-	sig        string // printed receiver type + signature
+	sig        string // printed receiver type + signature types (see signature)
 	text       string // printed whole declaration
 	exported   bool
 	paired     bool
@@ -245,7 +245,7 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 				x.exported = x.exported && ast.IsExported(tn)
 				x.sig = render(fset, rt)
 			}
-			x.sig += "|" + render(fset, d.Type)
+			x.sig += "|" + signature(fset, d.Type)
 			x.text = render(fset, d)
 			fns = append(fns, x)
 		case *ast.GenDecl:
@@ -323,6 +323,38 @@ func recvTypeName(e ast.Expr) string {
 			return "?"
 		}
 	}
+}
+
+// signature renders the API-relevant part of a function type: type
+// parameters with their names and constraints, then parameter and result
+// types in order (variadic "..." preserved). Ordinary parameter and result
+// names are ignored, so renaming them is not a signature change.
+func signature(fset *token.FileSet, ft *ast.FuncType) string {
+	var tparams []string
+	if ft.TypeParams != nil {
+		for _, f := range ft.TypeParams.List {
+			c := render(fset, f.Type)
+			for _, n := range f.Names {
+				tparams = append(tparams, n.Name+" "+c)
+			}
+		}
+	}
+	return "[" + strings.Join(tparams, ", ") + "](" + fieldTypes(fset, ft.Params) + ")(" + fieldTypes(fset, ft.Results) + ")"
+}
+
+// fieldTypes renders each field's type once per name (once if unnamed).
+func fieldTypes(fset *token.FileSet, fl *ast.FieldList) string {
+	if fl == nil {
+		return ""
+	}
+	var out []string
+	for _, f := range fl.List {
+		t := render(fset, f.Type)
+		for range max(1, len(f.Names)) {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 func render(fset *token.FileSet, n any) string {
