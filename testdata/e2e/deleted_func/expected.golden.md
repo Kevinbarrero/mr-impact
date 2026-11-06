@@ -2,18 +2,7 @@
 ### 🔍 MR impact — 0 functions changed
 **🔴 0 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
-| Risk | Function | Change | Callers | Added-line coverage |
-|---|---|---|---|---|
-
 ➖ Deleted: `legacy.OldTotal`
-
-```mermaid
-graph RL
-```
-
-<details><summary>All callers (0)</summary>
-
-</details>
 
 <details><summary>⚠️ Limits of this analysis</summary>
 

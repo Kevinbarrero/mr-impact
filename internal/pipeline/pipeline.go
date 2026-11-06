@@ -40,8 +40,10 @@ type Config struct {
 
 // Run analyzes Base..Head in cfg.Dir. err is non-nil only for internal
 // failures (git missing, ErrShallow, no package loaded, I/O errors); in that
-// case Model.Failure is also set so the CLI can still post. Build errors in
-// the changed code are an analysis outcome: Model.Failure is set, err is nil.
+// case Model.Failure is also set to a fixed, single-line message (never the
+// error text, which may hold git/go stderr with credentialed URLs) so the CLI
+// can still post, and err is returned unchanged for the job log. Build errors
+// in the changed code are an analysis outcome: Model.Failure is set, err is nil.
 func Run(ctx context.Context, cfg Config) (report.Model, error) {
 	now := cfg.Now
 	if now == nil {
@@ -50,7 +52,11 @@ func Run(ctx context.Context, cfg Config) (report.Model, error) {
 	start := now()
 	m, err := run(ctx, cfg)
 	if err != nil {
-		m = report.Model{Failure: err.Error()}
+		var le loadError
+		if errors.As(err, &le) {
+			err = le.err
+		}
+		m = report.Model{Failure: failureText(err, le.err != nil)}
 	}
 	m.Version = Version
 	m.Duration = now().Sub(start)
@@ -115,7 +121,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	// 4. Load.
 	prog, err := load.Load(ctx, cfg.Dir, cfg.Tags)
 	if err != nil {
-		return report.Model{}, err
+		return report.Model{}, loadError{err}
 	}
 	changedFiles := map[string]bool{}
 	for _, f := range live {
@@ -215,6 +221,24 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		})
 	}
 	return m, nil
+}
+
+// loadError marks a load.Load failure (nothing loaded) so Run can choose its
+// public message; Run unwraps it before returning.
+type loadError struct{ err error }
+
+func (e loadError) Error() string { return e.err.Error() }
+
+// failureText is the public, single-line Model.Failure for an internal error.
+func failureText(err error, isLoad bool) string {
+	switch {
+	case errors.Is(err, diff.ErrShallow):
+		return diff.ErrShallow.Error()
+	case isLoad:
+		return "no Go packages could be loaded (see job log)"
+	default:
+		return "internal error (see job log)"
+	}
 }
 
 func kindText(f symbols.ChangedFunc) string {

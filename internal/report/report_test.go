@@ -106,6 +106,21 @@ func TestRenderNoGoChanges(t *testing.T) {
 	golden(t, "no_go_changes", Render(Model{NoGoChanges: true, Version: "0.1.0", Duration: 100 * time.Millisecond}))
 }
 
+func TestRenderNoFuncs(t *testing.T) {
+	out := Render(Model{
+		Deleted:      []string{"legacy.OldTotal"},
+		Decls:        []string{"const Max in limits/limits.go"},
+		TestsTouched: []string{"limits/limits_test.go"},
+		Coverage:     "static", BaseSHA: "abcdef0123", Version: "0.1.0", Duration: time.Second,
+	})
+	for _, absent := range []string{"| Risk |", "```mermaid", "All callers"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("output contains %q with no functions", absent)
+		}
+	}
+	golden(t, "no_funcs", out)
+}
+
 func TestRenderDegradedWithLimits(t *testing.T) {
 	m := specModel()
 	m.Degraded = true
