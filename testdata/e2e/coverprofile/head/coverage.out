@@ -1,0 +1,12 @@
+mode: set
+example.com/fx/grade/grade.go:4.31,5.17 1 1
+example.com/fx/grade/grade.go:5.17,7.3 1 1
+example.com/fx/grade/grade.go:8.2,8.17 1 1
+example.com/fx/grade/grade.go:8.17,10.3 1 1
+example.com/fx/grade/grade.go:11.2,11.12 1 0
+example.com/fx/grade/grade.go:15.31,17.2 1 0
+example.com/fx/grade/grade.go:20.27,21.16 1 1
+example.com/fx/grade/grade.go:21.16,23.3 1 1
+example.com/fx/grade/grade.go:24.2,24.18 1 0
+example.com/fx/grade/grade.go:28.29,30.2 1 0
+example.com/fx/grade/grade.go:33.19,35.2 1 0
