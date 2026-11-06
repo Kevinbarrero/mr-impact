@@ -13,6 +13,8 @@ Pre-registered 2026-11-06, committed before any real MR was run. Copied verbatim
 
 Add the job with `--no-post` to one service's CI and fill the table below over 20 MRs.
 
+p90 runtime is computed by nearest rank over the recorded runtimes: sort them ascending and take the ⌈0.9·n⌉-th value (for n = 20, the 18th). Added 2026-11-06, before any MR was recorded.
+
 ## Per-MR record
 
 | MR | useful flag? | reviewer agrees? | false positives | runtime s | notes |
