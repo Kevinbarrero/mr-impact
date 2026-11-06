@@ -109,3 +109,20 @@ func EnsureCommit(ctx context.Context, repoDir, sha string) error {
 	}
 	return nil
 }
+
+// ErrNoMergeBase is returned by MergeBase when the two revisions share no
+// ancestor in the local history (unrelated, or cut off by a shallow clone).
+var ErrNoMergeBase = errors.New("no merge-base")
+
+// MergeBase returns the SHA of the best common ancestor of a and b.
+func MergeBase(ctx context.Context, repoDir, a, b string) (string, error) {
+	out, err := runGit(ctx, repoDir, "merge-base", a, b)
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 && ctx.Err() == nil {
+			return "", ErrNoMergeBase
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
