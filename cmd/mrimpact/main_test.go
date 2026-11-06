@@ -200,11 +200,24 @@ func TestMissingBase(t *testing.T) {
 
 func TestMissingToken(t *testing.T) {
 	repo, base := fixture(t, "exported_signature")
-	s, _ := server(t, 0)
+	s, n := server(t, 0)
 	e := ciEnv(s.URL)
 	delete(e, "MRIMPACT_TOKEN")
 	code, _, stderr := exec(t, e, "--dir", repo, "--base", base, "--out", filepath.Join(t.TempDir(), "r.md"))
-	if code != 0 || !strings.Contains(stderr, "MRIMPACT_TOKEN") {
-		t.Fatalf("code=%d stderr=%s", code, stderr)
+	if code != 0 || n.Load() != 0 || !strings.Contains(stderr, "MRIMPACT_TOKEN") {
+		t.Fatalf("code=%d requests=%d stderr=%s", code, n.Load(), stderr)
+	}
+}
+
+// A missing token is a configuration warning, not an internal failure: the note
+// is not posted and --strict still exits 0 (spec §7).
+func TestMissingTokenStrict(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	s, n := server(t, 0)
+	e := ciEnv(s.URL)
+	delete(e, "MRIMPACT_TOKEN")
+	code, _, stderr := exec(t, e, "--strict", "--dir", repo, "--base", base, "--out", filepath.Join(t.TempDir(), "r.md"))
+	if code != 0 || n.Load() != 0 || !strings.Contains(stderr, "MRIMPACT_TOKEN") {
+		t.Fatalf("code=%d requests=%d stderr=%s", code, n.Load(), stderr)
 	}
 }

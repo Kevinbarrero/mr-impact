@@ -112,11 +112,11 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	fmt.Fprint(stdout, note)
 
 	if inMR && !*noPost && !(m.NoGoChanges && *skipEmpty) {
-		token := env("MRIMPACT_TOKEN")
-		if token == "" {
-			warnf("set MRIMPACT_TOKEN (Project Access Token, api scope, Reporter role) as a masked CI/CD variable")
-		}
-		if err := newClient(apiURL, token).Upsert(ctx, projectID, mrIID, report.Marker, note); err != nil {
+		// No token: keep the artifact and stdout, warn, and skip posting; this
+		// is a configuration gap, not an internal failure (spec §7).
+		if token := env("MRIMPACT_TOKEN"); token == "" {
+			warnf("set MRIMPACT_TOKEN (Project Access Token, api scope, Reporter role) as a masked CI/CD variable; note not posted")
+		} else if err := newClient(apiURL, token).Upsert(ctx, projectID, mrIID, report.Marker, note); err != nil {
 			warnf("posting note failed: %v", err)
 			internalFailure = true
 		}
