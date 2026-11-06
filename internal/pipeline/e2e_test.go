@@ -34,6 +34,7 @@ func TestE2E(t *testing.T) {
 		{name: "callback_value"},
 		{name: "build_tags"},
 		{name: "head_broken"},
+		{name: "embed_missing"},
 		{name: "decl_change"},
 		{name: "no_go_changes"},
 		{name: "coverprofile", profiles: []string{"coverage.out"}},
