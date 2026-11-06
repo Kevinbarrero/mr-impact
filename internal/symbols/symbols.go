@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"go/types"
 	"path"
 	"sort"
 	"strings"
@@ -230,24 +231,18 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 				start: fset.Position(d.Pos()).Line, end: fset.Position(d.End()).Line,
 			}
 			name := d.Name.Name
+			x.display = DisplayName(pkg, d)
 			switch {
 			case d.Recv == nil && name == "init":
 				inits++
 				x.key = fmt.Sprintf("%s.init@%s#%d", dir, path.Base(keyFile), inits)
-				x.display = pkg + "." + name
 			case d.Recv == nil:
 				x.key = dir + "." + name
-				x.display = pkg + "." + name
 			default:
 				rt := d.Recv.List[0].Type
 				tn := recvTypeName(rt)
 				x.key = dir + "." + tn + "." + name
 				x.exported = x.exported && ast.IsExported(tn)
-				if star, ok := rt.(*ast.StarExpr); ok {
-					x.display = pkg + ".(*" + render(fset, star.X) + ")." + name
-				} else {
-					x.display = pkg + "." + render(fset, rt) + "." + name
-				}
 				x.sig = render(fset, rt)
 			}
 			x.sig += "|" + render(fset, d.Type)
@@ -294,6 +289,21 @@ func genDeclChanges(fset *token.FileSet, file string, d *ast.GenDecl, lines []in
 		out = append(out, DeclChange{File: file, Line: fset.Position(d.Pos()).Line, What: d.Tok.String()})
 	}
 	return out
+}
+
+// DisplayName returns the package-clause-qualified name of fd:
+// "pkg.Name", "pkg.(*Recv).Name" or "pkg.Recv.Name", with receiver type
+// parameters as written in source (e.g. "pkg.(*List[T]).Push").
+func DisplayName(pkgName string, fd *ast.FuncDecl) string {
+	name := fd.Name.Name
+	if fd.Recv == nil || len(fd.Recv.List) == 0 {
+		return pkgName + "." + name
+	}
+	rt := fd.Recv.List[0].Type
+	if star, ok := rt.(*ast.StarExpr); ok {
+		return pkgName + ".(*" + types.ExprString(star.X) + ")." + name
+	}
+	return pkgName + "." + types.ExprString(rt) + "." + name
 }
 
 func recvTypeName(e ast.Expr) string {
