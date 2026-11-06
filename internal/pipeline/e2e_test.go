@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -297,4 +298,20 @@ func TestLoadErrorDoesNotLeakIntoNote(t *testing.T) {
 	repo, baseSHA, _ := testutil.MakeRepo(t, base, head)
 	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
 	assertNoLeak(t, m, err, "no Go packages could be loaded (see job log)")
+}
+
+// The failed fetch's stderr goes to the job log via err, while the note keeps
+// ErrShallow's fixed text.
+func TestShallowFetchErrorDoesNotLeakIntoNote(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "interface_call")
+	repo, _, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	// git echoes the remote path on stderr when it is not a repository.
+	if out, err := exec.Command("git", "-C", repo, "remote", "add", "origin", filepath.Join(t.TempDir(), "user:secret@host")).CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v\n%s", err, out)
+	}
+	m, err := Run(context.Background(), Config{Dir: repo, Base: "1111111111111111111111111111111111111111"})
+	if !errors.Is(err, diff.ErrShallow) {
+		t.Fatalf("err = %v, want ErrShallow", err)
+	}
+	assertNoLeak(t, m, err, diff.ErrShallow.Error())
 }
