@@ -147,7 +147,7 @@ graph RL
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed · 🟡 partial · 🟢 covered · mrimpact v0.1 · 3.2 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered · mrimpact v0.1 · 3.2 s</sub>
 ````
 
 MR with no Go changes: a single line "No Go code changes", or no note (`--skip-empty`).
