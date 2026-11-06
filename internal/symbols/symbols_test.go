@@ -45,8 +45,7 @@ func other() {}
 `
 
 func TestBodyChange(t *testing.T) {
-	head := pricingBase[:len(pricingBase)-0]
-	head = strings.Replace(head, "x := a\n", "x := a + 1\n", 1)
+	head := strings.Replace(pricingBase, "x := a\n", "x := a + 1\n", 1)
 	r := run(t, []diff.FileChange{mod("pricing/p.go", []int{6}, []int{6})},
 		files{"pricing/p.go": head}, files{"pricing/p.go": pricingBase})
 	if len(r.Funcs) != 1 {
@@ -129,7 +128,7 @@ func TestExported(t *testing.T) {
 	src := "package p\n\ntype calc struct{}\n\nfunc (c *calc) Total() {}\n"
 	r := run(t, []diff.FileChange{{Path: "p.go", Status: diff.Added, AddedLines: []int{5}}},
 		files{"p.go": src}, files{})
-	if len(r.Funcs) != 1 || r.Funcs[0].Exported || r.Funcs[0].Key != "..calc.Total" && r.Funcs[0].Key != ".calc.Total" {
+	if len(r.Funcs) != 1 || r.Funcs[0].Exported || r.Funcs[0].Key != "..calc.Total" {
 		t.Fatalf("%+v", r.Funcs)
 	}
 }
@@ -138,7 +137,7 @@ func TestMultipleInit(t *testing.T) {
 	base := "package p\n\nfunc init() {\n\ta()\n}\n\nfunc init() {\n\tb()\n}\n"
 	head := strings.Replace(base, "b()", "c()", 1)
 	r := run(t, []diff.FileChange{mod("p.go", []int{8}, []int{8})}, files{"p.go": head}, files{"p.go": base})
-	if len(r.Funcs) != 1 || !strings.HasSuffix(r.Funcs[0].Key, "#2") || r.Funcs[0].Kind != Body {
+	if len(r.Funcs) != 1 || r.Funcs[0].Key != "..init@p.go#2" || r.Funcs[0].Kind != Body {
 		t.Fatalf("%+v", r.Funcs)
 	}
 }
@@ -147,23 +146,42 @@ func TestClosureAttributedToParent(t *testing.T) {
 	base := "package p\n\nfunc Run() {\n\tgo func() {\n\t\ta()\n\t}()\n}\n"
 	head := strings.Replace(base, "a()", "b()", 1)
 	r := run(t, []diff.FileChange{mod("p.go", []int{5}, []int{5})}, files{"p.go": head}, files{"p.go": base})
-	if len(r.Funcs) != 1 || r.Funcs[0].Key != ".Run" && r.Funcs[0].Key != "..Run" {
+	if len(r.Funcs) != 1 || r.Funcs[0].Key != "..Run" {
 		t.Fatalf("%+v", r.Funcs)
 	}
 }
 
 func TestDeclChange(t *testing.T) {
 	base := "package p\n\nimport \"os\"\n\ntype Foo struct{ A int }\n\nvar _ = os.Args\n"
-	head := strings.Replace(strings.Replace(base, "\"os\"", "\"os\"\nimport \"io\"", 1), "A int", "A, B int", 1)
-	head = strings.Replace(head, "var _ = os.Args", "var _ = os.Args\nvar _ io.Reader", 1)
-	// import at 4, type at 7 (shifted by one)
-	r := run(t, []diff.FileChange{mod("p.go", []int{4, 7}, []int{5})}, files{"p.go": head}, files{"p.go": base})
-	if len(r.Funcs) != 0 || len(r.Decls) != 2 {
+	head := "package p\n\nimport \"os\"\nimport \"io\"\n\ntype Foo struct{ A, B int }\n\nvar _ = os.Args\nvar _ io.Reader\n"
+	// HEAD: import "io" at 4, Foo at 6, new var at 9; BASE Foo (line 5) dedups with HEAD Foo.
+	r := run(t, []diff.FileChange{mod("p.go", []int{4, 6, 9}, []int{5})}, files{"p.go": head}, files{"p.go": base})
+	var got []string
+	for _, d := range r.Decls {
+		got = append(got, d.What)
+	}
+	if len(r.Funcs) != 0 || strings.Join(got, "|") != "import|type Foo|var _" {
 		t.Fatalf("%+v", r)
 	}
-	got := []string{r.Decls[0].What, r.Decls[1].What}
-	if got[0] != "import" || got[1] != "type Foo" {
-		t.Errorf("%v", got)
+	if r.Decls[0].Line != 4 || r.Decls[1].Line != 6 || r.Decls[2].Line != 9 {
+		t.Errorf("%+v", r.Decls)
+	}
+}
+
+func TestCrossDirRenameKeepsBaseDir(t *testing.T) {
+	base := "package a\n\nfunc Keep() {}\n\nfunc Gone() {}\n"
+	head := "package b\n\nfunc Keep() {}\n"
+	ch := diff.FileChange{Path: "b/x.go", OldPath: "a/x.go", Status: diff.Renamed, DeletedLines: []int{5}}
+	r := run(t, []diff.FileChange{ch}, files{"b/x.go": head}, files{"a/x.go": base})
+	var del []string
+	for _, f := range r.Funcs {
+		if f.Kind == Deleted {
+			del = append(del, f.Key)
+		}
+	}
+	// Keep changes package (a -> b), so it is Deleted a.Keep + New b.Keep; Gone is a.Gone.
+	if strings.Join(del, ",") != "a.Keep,a.Gone" {
+		t.Fatalf("%+v", r.Funcs)
 	}
 }
 
@@ -176,10 +194,17 @@ func TestFuncMovedBetweenFiles(t *testing.T) {
 		mod("p/a.go", nil, []int{4, 5, 6, 7}),
 		mod("p/b.go", []int{4, 5, 6, 7}, nil),
 	}, files{"p/a.go": aHead, "p/b.go": bHead}, files{"p/a.go": a, "p/b.go": b})
-	for _, f := range r.Funcs {
-		if f.Kind == New || f.Kind == Deleted {
-			t.Errorf("unexpected %+v", f)
-		}
+	if len(r.Funcs) != 0 {
+		t.Fatalf("pure move should report nothing: %+v", r.Funcs)
+	}
+	// Moved and edited: reported as a Body change, not New/Deleted.
+	bHead2 := b + "\nfunc Moved() {\n\ty()\n}\n"
+	r = run(t, []diff.FileChange{
+		mod("p/a.go", nil, []int{4, 5, 6, 7}),
+		mod("p/b.go", []int{4, 5, 6, 7}, nil),
+	}, files{"p/a.go": aHead, "p/b.go": bHead2}, files{"p/a.go": a, "p/b.go": b})
+	if len(r.Funcs) != 1 || r.Funcs[0].Kind != Body || r.Funcs[0].File != "p/b.go" {
+		t.Fatalf("moved+edited: %+v", r.Funcs)
 	}
 }
 

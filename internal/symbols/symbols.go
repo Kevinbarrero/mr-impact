@@ -218,7 +218,7 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 		return nil, nil, fmt.Errorf("symbols: parse %s: %w", p, err)
 	}
 	pkg := f.Name.Name
-	dir := path.Dir(keyFile)
+	dir := path.Dir(p)
 	var fns []*fn
 	var decls []DeclChange
 	inits := 0
