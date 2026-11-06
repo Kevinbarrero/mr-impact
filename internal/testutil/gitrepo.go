@@ -79,3 +79,25 @@ func copyTree(t testing.TB, src, dst string) {
 		t.Fatal(err)
 	}
 }
+
+// AdvanceBase commits files (repo-relative path → content) on top of from on
+// a side branch, as if the target branch moved on after head branched off,
+// then restores the original checkout. It returns the new commit's SHA.
+func AdvanceBase(t testing.TB, repo, from string, files map[string]string) string {
+	t.Helper()
+	git(t, repo, "checkout", "-q", "-b", "mrimpact-advanced-base", from)
+	for p, content := range files {
+		target := filepath.Join(repo, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-q", "-m", "base moved")
+	sha := strings.TrimSpace(git(t, repo, "rev-parse", "HEAD"))
+	git(t, repo, "checkout", "-q", "-")
+	return sha
+}

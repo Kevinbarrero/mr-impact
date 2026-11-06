@@ -81,10 +81,20 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	if err != nil {
 		return report.Model{}, err
 	}
+	// Diff against merge-base(base, head) so changes the target branch made
+	// after head branched off are excluded. In CI the base already is the
+	// merge-base; there a shallow clone may hide the common ancestor, so with
+	// no merge-base in local history the base itself is used.
+	switch mb, err := diff.MergeBase(ctx, cfg.Dir, baseSHA, head); {
+	case err == nil:
+		baseSHA = mb
+	case !errors.Is(err, diff.ErrNoMergeBase):
+		return report.Model{}, err
+	}
 	m := report.Model{BaseSHA: baseSHA, Coverage: "static"}
 
 	// 2. Diff.
-	changes, err := diff.Run(ctx, cfg.Dir, cfg.Base, head)
+	changes, err := diff.Run(ctx, cfg.Dir, baseSHA, head)
 	if err != nil {
 		return report.Model{}, err
 	}
@@ -95,7 +105,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 
 	// 3. Symbols.
 	headSrc := func(p string) ([]byte, error) { return os.ReadFile(filepath.Join(cfg.Dir, filepath.FromSlash(p))) }
-	baseSrc := func(p string) ([]byte, error) { return diff.ShowFile(ctx, cfg.Dir, cfg.Base, p) }
+	baseSrc := func(p string) ([]byte, error) { return diff.ShowFile(ctx, cfg.Dir, baseSHA, p) }
 	syms, err := symbols.Find(changes, headSrc, baseSrc)
 	if err != nil {
 		var list scanner.ErrorList

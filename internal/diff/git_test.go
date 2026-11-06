@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
@@ -110,6 +112,28 @@ func TestEnsureCommitUnknownSHA(t *testing.T) {
 	err := EnsureCommit(ctx, repo, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 	if !errors.Is(err, ErrShallow) {
 		t.Fatalf("err = %v, want ErrShallow", err)
+	}
+}
+
+func TestMergeBase(t *testing.T) {
+	d := writeTree(t, map[string]string{"a.go": "package p\n"})
+	repo, b, h := testutil.MakeRepo(t, d, d)
+	ctx := context.Background()
+	if got, err := MergeBase(ctx, repo, b, h); err != nil || got != b {
+		t.Fatalf("MergeBase = %q, %v, want %s", got, err, b)
+	}
+	// A parentless commit shares no history with head.
+	cmd := exec.Command("git", "-C", repo, "commit-tree", h+"^{tree}", "-m", "orphan")
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@x", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@x")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MergeBase(ctx, repo, strings.TrimSpace(string(out)), h); !errors.Is(err, ErrNoMergeBase) {
+		t.Fatalf("unrelated: err = %v, want ErrNoMergeBase", err)
+	}
+	if _, err := MergeBase(ctx, repo, "nope", h); err == nil || errors.Is(err, ErrNoMergeBase) {
+		t.Fatalf("bad rev: err = %v, want a git error", err)
 	}
 }
 

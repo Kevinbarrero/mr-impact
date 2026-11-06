@@ -223,6 +223,35 @@ func TestHeadParseErrorIsBuildFailure(t *testing.T) {
 	}
 }
 
+// Local mode diffs against merge-base(base, head): a function changed only on
+// the base branch after head branched off is not part of the MR.
+func TestDiffsAgainstMergeBase(t *testing.T) {
+	base, head := t.TempDir(), t.TempDir()
+	const src = "package calc\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n\nfunc Sub(a, b int) int {\n\treturn a - b\n}\n"
+	for dir, s := range map[string]string{base: src, head: strings.Replace(src, "a + b", "b + a", 1)} {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/fx\n\ngo 1.26.0\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "calc.go"), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo, forkSHA, _ := testutil.MakeRepo(t, base, head)
+	moved := testutil.AdvanceBase(t, repo, forkSHA, map[string]string{
+		"calc.go": strings.Replace(src, "a - b", "-b + a", 1),
+	})
+	m, err := Run(context.Background(), Config{Dir: repo, Base: moved})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if m.BaseSHA != forkSHA {
+		t.Errorf("BaseSHA = %s, want merge-base %s", m.BaseSHA, forkSHA)
+	}
+	if len(m.Funcs) != 1 || m.Funcs[0].Display != "calc.Add" || m.Funcs[0].Kind != "body" {
+		t.Errorf("Funcs = %+v, want only calc.Add (body)", m.Funcs)
+	}
+}
+
 const secretURL = "https://user:secret@host/repo"
 
 // assertNoLeak checks that err carries the secret (it goes to the job log)
