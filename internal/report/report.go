@@ -81,17 +81,11 @@ func Render(m Model) string {
 	}
 	b.WriteString("\n\n")
 
-	b.WriteString("| Risk | Function | Change | Callers | Added-line coverage |\n|---|---|---|---|---|\n")
-	for i, f := range funcs {
-		if i == maxTableRows {
-			break
-		}
-		fmt.Fprintf(&b, "| %s | `%s` | %s | %s | %s |\n", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers), cell(f.CoverText))
+	// With no rated functions there is nothing for the table, diagram or
+	// caller list to show; only the context lines and limits remain.
+	if len(funcs) > 0 {
+		writeTable(&b, funcs)
 	}
-	if len(funcs) > maxTableRows {
-		fmt.Fprintf(&b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
-	}
-	b.WriteString("\n")
 
 	for _, l := range []struct {
 		prefix string
@@ -109,8 +103,10 @@ func Render(m Model) string {
 		b.WriteString("\n")
 	}
 
-	writeDiagram(&b, funcs)
-	writeCallers(&b, funcs)
+	if len(funcs) > 0 {
+		writeDiagram(&b, funcs)
+		writeCallers(&b, funcs)
+	}
 
 	b.WriteString("<details><summary>⚠️ Limits of this analysis</summary>\n\n")
 	b.WriteString("- Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.\n")
@@ -126,6 +122,20 @@ func Render(m Model) string {
 
 	writeFooter(&b, m)
 	return b.String()
+}
+
+func writeTable(b *strings.Builder, funcs []FuncRow) {
+	b.WriteString("| Risk | Function | Change | Callers | Added-line coverage |\n|---|---|---|---|---|\n")
+	for i, f := range funcs {
+		if i == maxTableRows {
+			break
+		}
+		fmt.Fprintf(b, "| %s | `%s` | %s | %s | %s |\n", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers), cell(f.CoverText))
+	}
+	if len(funcs) > maxTableRows {
+		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
+	}
+	b.WriteString("\n")
 }
 
 func writeFooter(b *strings.Builder, m Model) {

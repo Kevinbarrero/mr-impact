@@ -174,8 +174,8 @@ func TestShallowBaseIsInternalFailure(t *testing.T) {
 	if !errors.Is(err, diff.ErrShallow) {
 		t.Fatalf("err = %v, want ErrShallow", err)
 	}
-	if m.Failure == "" || m.Version != Version {
-		t.Errorf("Failure=%q Version=%q, want a failure message and the version", m.Failure, m.Version)
+	if m.Failure != diff.ErrShallow.Error() || m.Version != Version {
+		t.Errorf("Failure=%q Version=%q, want ErrShallow's text and the version", m.Failure, m.Version)
 	}
 }
 
@@ -220,4 +220,51 @@ func TestHeadParseErrorIsBuildFailure(t *testing.T) {
 	if want := "build errors in `calc.go`"; m.Failure != want {
 		t.Errorf("Failure = %q, want %q", m.Failure, want)
 	}
+}
+
+const secretURL = "https://user:secret@host/repo"
+
+// assertNoLeak checks that err carries the secret (it goes to the job log)
+// while the public Failure and rendered note do not.
+func assertNoLeak(t *testing.T, m report.Model, err error, wantFailure string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "secret") {
+		t.Fatalf("err = %v, want the full error including the stderr text", err)
+	}
+	if m.Failure != wantFailure {
+		t.Errorf("Failure = %q, want %q", m.Failure, wantFailure)
+	}
+	if out := report.Render(m); strings.Contains(out, "secret") {
+		t.Errorf("rendered note leaks the secret:\n%s", out)
+	}
+}
+
+func TestGitErrorDoesNotLeakIntoNote(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "interface_call")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	// git diff fails and echoes the bad revision on stderr.
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, Head: secretURL})
+	assertNoLeak(t, m, err, "internal error (see job log)")
+}
+
+func TestLoadErrorDoesNotLeakIntoNote(t *testing.T) {
+	base, head := t.TempDir(), t.TempDir()
+	mods := map[string]string{
+		base: "module example.com/fx\n\ngo 1.26.0\n",
+		// go.mod treats "//" as a comment, so only the userinfo part fits;
+		// go list echoes the bad version on stderr.
+		head: "module example.com/fx\n\ngo user:secret@host\n",
+	}
+	for dir, mod := range mods {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		src := "package fx\n\nfunc F() int { return " + map[string]string{base: "1", head: "2"}[dir] + " }\n"
+		if err := os.WriteFile(filepath.Join(dir, "fx.go"), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo, baseSHA, _ := testutil.MakeRepo(t, base, head)
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
+	assertNoLeak(t, m, err, "no Go packages could be loaded (see job log)")
 }
