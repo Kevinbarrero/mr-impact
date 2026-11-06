@@ -15,8 +15,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// PackageError describes a package excluded from analysis because it, or a
-// package it imports, fails to load or type-check.
+// PackageError describes a package with load errors: in Program.Broken it is
+// excluded from analysis because it, or a package it imports, fails to parse
+// or type-check; in Program.Warnings it has only other errors (e.g. a
+// //go:embed pattern with no match) and is still analyzed.
 type PackageError struct {
 	PkgPath string
 	Files   []string // repo-relative
@@ -30,6 +32,7 @@ type Program struct {
 	SSA        *ssa.Program
 	Files      map[string]bool // repo-relative paths of every compiled file
 	Broken     []PackageError
+	Warnings   []PackageError // packages analyzed despite non-type errors
 
 	rel func(string) (string, bool)
 }
@@ -40,8 +43,8 @@ const mode = packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFil
 
 // Load runs packages.Load("./...") in dir with Tests:true and -tags=<tags>
 // (if any), and builds SSA (with ssa.InstantiateGenerics) for the packages
-// that are well-typed and import only well-typed packages. It returns an
-// error only if no package loaded at all.
+// that are well-typed and import only well-typed packages (see Broken and
+// Warnings). It returns an error only if no package loaded at all.
 func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -72,31 +75,31 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 		}
 	}
 
-	// A package is broken if it has errors or (transitively) imports one
-	// that does; building SSA for ill-typed code panics.
+	// A package is broken if it failed to parse or type-check, or
+	// (transitively) imports one that did; building SSA for ill-typed code
+	// panics. pkg.IllTyped is not used: go/packages also sets it for list
+	// errors (e.g. a //go:embed pattern with no match) that leave the types
+	// complete. Such packages stay analyzable and are reported as warnings.
 	broken := map[*packages.Package]string{}
+	warned := map[*packages.Package]string{}
 	packages.Visit(pkgs, nil, func(pkg *packages.Package) {
-		var msgs []string
-		for _, e := range pkg.Errors {
-			msgs = append(msgs, e.Error())
+		if msg := typeBreakage(pkg); msg != "" {
+			broken[pkg] = msg
+			return
 		}
-		if len(msgs) == 0 {
-			for _, imp := range sortedImports(pkg) {
-				if _, bad := broken[imp]; bad {
-					msgs = append(msgs, "imports broken package "+imp.PkgPath)
-					break
-				}
+		for _, imp := range sortedImports(pkg) {
+			if _, bad := broken[imp]; bad {
+				broken[pkg] = "imports broken package " + imp.PkgPath
+				return
 			}
 		}
-		if len(msgs) == 0 && pkg.IllTyped {
-			msgs = append(msgs, "package or a dependency has errors")
-		}
-		if len(msgs) > 0 {
-			broken[pkg] = strings.Join(msgs, "; ")
+		if len(pkg.Errors) > 0 {
+			warned[pkg] = firstLine(pkg.Errors[0].Error())
 		}
 	})
 
 	byPath := map[string]*PackageError{}
+	warnByPath := map[string]*PackageError{}
 	prog := ssa.NewProgram(p.Fset, ssa.InstantiateGenerics)
 	isInitial := map[*packages.Package]bool{}
 	for _, pkg := range pkgs {
@@ -105,12 +108,12 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 	packages.Visit(pkgs, nil, func(pkg *packages.Package) {
 		if msg, bad := broken[pkg]; bad {
 			if isInitial[pkg] {
-				addBroken(byPath, pkg, msg, rel)
+				addPackageError(byPath, pkg, msg, rel)
 			}
 			return
 		}
-		if pkg.Types == nil {
-			return
+		if msg, ok := warned[pkg]; ok && isInitial[pkg] {
+			addPackageError(warnByPath, pkg, msg, rel)
 		}
 		if isInitial[pkg] {
 			prog.CreatePackage(pkg.Types, pkg.Syntax, pkg.TypesInfo, true)
@@ -126,12 +129,44 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 		p.Broken = append(p.Broken, *e)
 	}
 	sort.Slice(p.Broken, func(i, j int) bool { return p.Broken[i].PkgPath < p.Broken[j].PkgPath })
+	for _, e := range warnByPath {
+		sort.Strings(e.Files)
+		p.Warnings = append(p.Warnings, *e)
+	}
+	sort.Slice(p.Warnings, func(i, j int) bool { return p.Warnings[i].PkgPath < p.Warnings[j].PkgPath })
 	return p, nil
 }
 
-// addBroken records pkg under its import path, merging test variants. A
+// typeBreakage returns a non-empty message if pkg itself failed to parse or
+// type-check (or has incomplete types), ignoring errors of its imports.
+func typeBreakage(pkg *packages.Package) string {
+	if len(pkg.TypeErrors) > 0 {
+		return firstLine(pkg.TypeErrors[0].Error())
+	}
+	for _, e := range pkg.Errors {
+		if e.Kind == packages.TypeError || e.Kind == packages.ParseError {
+			return firstLine(e.Error())
+		}
+	}
+	// Complete is only meaningful for packages type-checked from source:
+	// dependencies read lazily from export data report incomplete types.
+	if pkg.Types == nil || (len(pkg.Syntax) > 0 && !pkg.Types.Complete()) {
+		if len(pkg.Errors) > 0 {
+			return firstLine(pkg.Errors[0].Error())
+		}
+		return "package types are incomplete"
+	}
+	return ""
+}
+
+func firstLine(s string) string {
+	s, _, _ = strings.Cut(s, "\n")
+	return strings.TrimSpace(s)
+}
+
+// addPackageError records pkg under its import path, merging test variants. A
 // package with no files in the repo (a generated test main) is not reported.
-func addBroken(byPath map[string]*PackageError, pkg *packages.Package, msg string, rel func(string) (string, bool)) {
+func addPackageError(byPath map[string]*PackageError, pkg *packages.Package, msg string, rel func(string) (string, bool)) {
 	var files []string
 	for _, f := range pkg.CompiledGoFiles {
 		if r, ok := rel(f); ok {

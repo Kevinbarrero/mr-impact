@@ -138,6 +138,9 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	if len(failed) > 0 {
 		return report.Model{BaseSHA: baseSHA, Failure: "build errors in " + strings.Join(failed, ", ")}, nil
 	}
+	for _, w := range prog.Warnings {
+		m.Warnings = append(m.Warnings, w.PkgPath+": "+w.Msg)
+	}
 
 	// 5. Call graph.
 	gctx, cancel := ctx, context.CancelFunc(func() {})

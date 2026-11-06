@@ -1,0 +1,3 @@
+# app imports ui, whose //go:embed pattern matches nothing (list error,
+# not a type error): still analyzed, with a Limits warning.
+app.Greet: app.Serve

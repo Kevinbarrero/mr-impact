@@ -186,6 +186,63 @@ func TestBrokenPackage(t *testing.T) {
 	}
 }
 
+// A //go:embed pattern with no match is a list error, not a type error: the
+// package and its importers stay analyzable and are reported as warnings.
+func TestEmbedMissingPackage(t *testing.T) {
+	dir := t.TempDir()
+	copyDir(t, fixture, dir)
+	embed := "package store\n\nimport \"embed\"\n\n//go:embed missing/dir\nvar assets embed.FS\n"
+	if err := os.WriteFile(filepath.Join(dir, "store", "assets.go"), []byte(embed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := load.Load(context.Background(), dir, nil)
+	if err != nil || p == nil {
+		t.Fatalf("Load = %v, %v", p, err)
+	}
+	if len(p.Broken) != 0 {
+		t.Fatalf("Broken = %+v, want none", p.Broken)
+	}
+	if len(p.Warnings) != 1 || p.Warnings[0].PkgPath != "example.com/iface/store" {
+		t.Fatalf("Warnings = %+v, want one entry for example.com/iface/store", p.Warnings)
+	}
+	if w := p.Warnings[0]; !strings.Contains(w.Msg, "pattern missing/dir") || strings.Contains(w.Msg, "\n") {
+		t.Errorf("Warnings[0].Msg = %q, want single-line embed error", w.Msg)
+	}
+	g, err := Build(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	im := g.Impact("svc/svc.go", lineOf(t, dir, "svc/svc.go", "func Lookup"), 2)
+	if _, ok := callerAt(im, "api.Handle"); !ok || !im.TestReached {
+		t.Errorf("importer svc.Lookup not analyzable: %+v", im)
+	}
+	im = g.Impact("store/mem.go", lineOf(t, dir, "store/mem.go", "func (s *memStore) Get"), 2)
+	if _, ok := callerAt(im, "svc.Lookup"); !ok {
+		t.Errorf("embed package store not analyzable: %+v", im)
+	}
+}
+
+// An import of a module that doesn't exist must still mark the importer
+// Broken (it can't be type-checked completely).
+func TestMissingImportBroken(t *testing.T) {
+	dir := t.TempDir()
+	copyDir(t, fixture, dir)
+	src := "package api\n\nimport \"example.com/doesnotexist\"\n\nfunc Handle() string {\n\treturn doesnotexist.Name()\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "api", "api.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := load.Load(context.Background(), dir, nil)
+	if err != nil || p == nil {
+		t.Fatalf("Load = %v, %v", p, err)
+	}
+	if len(p.Broken) != 1 || p.Broken[0].PkgPath != "example.com/iface/api" {
+		t.Fatalf("Broken = %+v, want example.com/iface/api", p.Broken)
+	}
+	if len(p.Warnings) != 0 {
+		t.Errorf("Warnings = %+v, want none", p.Warnings)
+	}
+}
+
 func TestBuildTimeout(t *testing.T) {
 	p, _ := loadFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
