@@ -91,6 +91,11 @@ func TestRunDetectsRename(t *testing.T) {
 }
 
 func TestShowFileMissing(t *testing.T) {
+	// Detection matches git's English messages; a translated locale must not
+	// break it (runGit forces LC_ALL=C).
+	t.Setenv("LANG", "ru_RU.UTF-8")
+	t.Setenv("LC_ALL", "ru_RU.UTF-8")
+	t.Setenv("LANGUAGE", "ru")
 	d := writeTree(t, map[string]string{"a.go": "package p\n"})
 	repo, b, _ := testutil.MakeRepo(t, d, d)
 	if _, err := ShowFile(context.Background(), repo, b, "nope.go"); !errors.Is(err, fs.ErrNotExist) {
@@ -99,6 +104,23 @@ func TestShowFileMissing(t *testing.T) {
 	got, err := ShowFile(context.Background(), repo, b, "a.go")
 	if err != nil || string(got) != "package p\n" {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+// git translations may not be installed where tests run, so check the
+// environment runGit gives git directly, via a shell alias.
+func TestRunGitForcesCLocale(t *testing.T) {
+	t.Setenv("LC_ALL", "ru_RU.UTF-8")
+	t.Setenv("LANGUAGE", "ru")
+	d := writeTree(t, map[string]string{"a.go": "package p\n"})
+	repo, _, _ := testutil.MakeRepo(t, d, d)
+	out, err := runGit(context.Background(), repo, "-c", "alias.envdump=!env", "envdump")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := "\n" + string(out)
+	if !strings.Contains(env, "\nLC_ALL=C\n") || !strings.Contains(env, "\nLANGUAGE=\n") || strings.Contains(env, "LANGUAGE=ru") {
+		t.Fatalf("git env lacks LC_ALL=C / empty LANGUAGE:\n%s", out)
 	}
 }
 

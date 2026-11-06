@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -34,6 +35,8 @@ func IsGenerated(src []byte) bool {
 
 func runGit(ctx context.Context, repoDir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", repoDir}, args...)...)
+	// Untranslated messages: ShowFile matches git's English error text.
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANGUAGE=")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -99,13 +102,15 @@ func ShowFile(ctx context.Context, repoDir, rev, path string) ([]byte, error) {
 	return out, nil
 }
 
-// EnsureCommit verifies sha is present, fetching it from origin if not.
+// EnsureCommit verifies sha is present, fetching it from origin if not. A
+// failed fetch returns an error wrapping ErrShallow that also carries git's
+// message (for the job log only; it may contain credentialed URLs).
 func EnsureCommit(ctx context.Context, repoDir, sha string) error {
 	if _, err := runGit(ctx, repoDir, "cat-file", "-e", sha+"^{commit}"); err == nil {
 		return nil
 	}
 	if _, err := runGit(ctx, repoDir, "fetch", "origin", sha); err != nil {
-		return ErrShallow
+		return fmt.Errorf("%w: %v", ErrShallow, err)
 	}
 	return nil
 }
