@@ -19,8 +19,14 @@ var defaultPatterns = []string{
 	// Files
 	"os.Remove", "os.RemoveAll", "os.WriteFile", "os.Create", "os.OpenFile", "os.Chmod", "os.Chown",
 	"os.Rename", "os.Symlink", "os.Link",
-	// Reflection
-	"reflect.*",
+	// Reflection: mutating, unsafe and dynamic-dispatch APIs only; read-only
+	// inspection (TypeOf, ValueOf, DeepEqual, Kind, Interface) is not
+	// sensitive.
+	"reflect.(Value).Set*", "reflect.(Value).Send", "reflect.(Value).TrySend", "reflect.(Value).Clear",
+	"reflect.Copy", "reflect.Swapper",
+	"reflect.NewAt", "reflect.(Value).UnsafePointer", "reflect.(Value).UnsafeAddr", "reflect.(Value).Pointer",
+	"reflect.(Value).Call*", "reflect.(Value).Method", "reflect.(Value).MethodByName", "reflect.(Type).MethodByName",
+	"reflect.MakeFunc",
 	// Crypto / TLS
 	"crypto/...", "crypto/tls.Config",
 	// SQL
@@ -28,7 +34,7 @@ var defaultPatterns = []string{
 	// HTTP
 	"net/http.ListenAndServe", "net/http.ListenAndServeTLS", "net/http.(*Server).*", "net/http.(*Client).*",
 	"net/http.Get", "net/http.Post", "net/http.PostForm", "net/http.Head", "net/http.Handle",
-	"net/http.HandleFunc", "net/http.(*ServeMux).*",
+	"net/http.HandleFunc",
 	// Deserialization / templates
 	"encoding/gob.*", "encoding/xml.(*Decoder).*", "encoding/xml.Unmarshal",
 	"text/template.(*Template).Execute*", "html/template.(*Template).Execute*",

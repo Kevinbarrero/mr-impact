@@ -52,7 +52,7 @@ func TestLoad_Full(t *testing.T) {
 	want := Config{
 		Critical:        []string{"internal/payment/..."},
 		SensitiveAdd:    []string{"github.com/shopspring/decimal.*", "example.com/ledger.(*Ledger).Post"},
-		SensitiveRemove: []string{"reflect.*"},
+		SensitiveRemove: []string{"os/exec.*"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("got %+v, want %+v", cfg, want)

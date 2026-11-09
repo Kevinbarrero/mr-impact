@@ -9,14 +9,14 @@
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
 | 🔴 | `pay.Settle` | body · sensitive | 0 | not reached |
-| 🟡 | `describe.Name` | body · wiring | 0 | not reached |
+| 🟡 | `describe.Tool` | body | 0 | not reached |
 
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
 
 ```mermaid
 flowchart RL
   n0["🔴 pay.Settle"]:::red
-  n1["🟡 describe.Name"]:::yellow
+  n1["🟡 describe.Tool"]:::yellow
   subgraph legend ["Legend"]
     direction LR
     lr["🔴 changed, not tested"]:::red

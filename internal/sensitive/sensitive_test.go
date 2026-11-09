@@ -86,7 +86,7 @@ func TestCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	noReflect, err := NewTable(nil, []string{"reflect.*"})
+	noReflect, err := NewTable(nil, []string{"reflect.(Value).Set*"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,10 +170,28 @@ import "example.com/l"
 func F(x *l.Ledger) { x.Post(1) }`, nil},
 		{"remove", noReflect, `package p
 import "reflect"
-func F(x any) { reflect.TypeOf(x) }`, nil},
-		{"reflect-default", defaults(t), `package p
+func F(v reflect.Value) { v.SetInt(1) }`, nil},
+		{"reflect-read-only", defaults(t), `package p
 import "reflect"
-func F(x any) { reflect.TypeOf(x) }`, []string{"reflect.TypeOf"}},
+func F(x, y any) bool {
+	v := reflect.ValueOf(x)
+	_ = v.Kind(); _ = v.Interface(); _ = reflect.TypeOf(x).Kind()
+	return reflect.DeepEqual(x, y)
+}`, nil},
+		{"reflect-set", defaults(t), `package p
+import "reflect"
+func F(v reflect.Value) { v.Set(reflect.ValueOf(1)); v.SetInt(2) }`,
+			[]string{"reflect.(Value).Set", "reflect.(Value).SetInt"}},
+		{"reflect-dynamic", defaults(t), `package p
+import "reflect"
+func F(v reflect.Value, t reflect.Type) {
+	v.MethodByName("X").Call(nil)
+	t.MethodByName("X")
+	_ = reflect.NewAt(t, nil)
+}`, []string{"reflect.(Value).MethodByName", "reflect.(Value).Call", "reflect.(Type).MethodByName", "reflect.NewAt"}},
+		{"servemux-not-default", defaults(t), `package p
+import "net/http"
+func F(m *http.ServeMux, h http.Handler) { m.Handle("/", h) }`, nil},
 		{"order", defaults(t), `package p
 import ("os"; "os/exec")
 func F(p string) { os.Remove(p); exec.Command("ls"); os.Remove(p) }`,

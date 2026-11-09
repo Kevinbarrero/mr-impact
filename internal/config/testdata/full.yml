@@ -5,4 +5,4 @@ sensitive:
     - github.com/shopspring/decimal.*
     - example.com/ledger.(*Ledger).Post
   remove:                 # patterns removed from the default table, matched textually
-    - reflect.*
+    - os/exec.*

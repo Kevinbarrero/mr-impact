@@ -41,10 +41,10 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
 |---|---|
 | Process / OS | `os/exec.*`, `syscall.*`, `unsafe.*`, `plugin.*`, `os.(*Process).*`, `os.StartProcess` |
 | Files | `os.Remove`, `os.RemoveAll`, `os.WriteFile`, `os.Create`, `os.OpenFile`, `os.Chmod`, `os.Chown`, `os.Rename`, `os.Symlink`, `os.Link` |
-| Reflection | `reflect.*` |
+| Reflection | `reflect.(Value).Set*`, `reflect.(Value).Send`, `reflect.(Value).TrySend`, `reflect.(Value).Clear`, `reflect.Copy`, `reflect.Swapper`, `reflect.NewAt`, `reflect.(Value).UnsafePointer`, `reflect.(Value).UnsafeAddr`, `reflect.(Value).Pointer`, `reflect.(Value).Call*`, `reflect.(Value).Method`, `reflect.(Value).MethodByName`, `reflect.(Type).MethodByName`, `reflect.MakeFunc` (mutating, unsafe and dynamic-dispatch APIs; read-only `TypeOf`, `ValueOf`, `DeepEqual`, `Kind`, `Interface` are not sensitive) |
 | Crypto / TLS | `crypto/...` (every package under `crypto`), `crypto/tls.Config` (composite literal counts) |
 | SQL | `database/sql.(*DB).*`, `database/sql.(*Tx).*`, `database/sql.(*Conn).*`, `database/sql.(*Stmt).*` |
-| HTTP | `net/http.ListenAndServe`, `net/http.ListenAndServeTLS`, `net/http.(*Server).*`, `net/http.(*Client).*`, `net/http.Get`, `net/http.Post`, `net/http.PostForm`, `net/http.Head`, `net/http.Handle`, `net/http.HandleFunc`, `net/http.(*ServeMux).*` |
+| HTTP | `net/http.ListenAndServe`, `net/http.ListenAndServeTLS`, `net/http.(*Server).*`, `net/http.(*Client).*`, `net/http.Get`, `net/http.Post`, `net/http.PostForm`, `net/http.Head`, `net/http.Handle`, `net/http.HandleFunc` |
 | Deserialization / templates | `encoding/gob.*`, `encoding/xml.(*Decoder).*`, `encoding/xml.Unmarshal`, `text/template.(*Template).Execute*`, `html/template.(*Template).Execute*` |
 
 `crypto/...` and the `.../` form match the package and every package below it. A composite literal of a matched type (e.g. `tls.Config{…}`) counts as touching it.
@@ -53,7 +53,7 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
 
 - **Kind column:** ` · sensitive` is appended, after ` · wiring` if both apply.
 - **Rating:** `risk.Input` gains `Sensitive bool` and `AddedLines int`. A sensitive function that is *untested* is 🔴, whatever its caller count. Untested means: it has added lines and, with a profile, they are `0/N` (N > 0); without a profile, no test reaches it. Without a profile and without a call graph (degraded), test reach is unknown (`Input.ReachUnknown`): the rule does not fire and today's rating applies; the function is still listed in the section. This rule:
-  - is not capped by wiring;
+  - does not apply to `main` (of package main), `init` or wiring functions (`Input.Root`, `Input.Wiring`): they keep today's rules, so wiring stays capped at 🟡; they are still listed in the section;
   - is not softened by cross-package reach, because a cross-package test that reaches the function does not prove its added lines ran;
   - leaves partly tested sensitive functions as they are (🟡), listed in the section below;
   - leaves a sensitive function with no added lines (lines only removed) rated by today's rules.
@@ -96,7 +96,7 @@ sensitive:
     - github.com/shopspring/decimal.*
     - example.com/ledger.(*Ledger).Post
   remove:                 # patterns removed from the default table, matched textually
-    - reflect.*
+    - os/exec.*
 ```
 
 - Every key is optional. An empty file equals no file.
@@ -145,7 +145,7 @@ sensitive:
   - `crypto/sha256.Sum256` via `crypto/...`;
   - a call through a non-sensitive interface (not matched);
   - an `add` pattern on a third-party method;
-  - `remove: reflect.*`;
+  - `remove: os/exec.*`;
   - deterministic ordering of results.
 - **`critical`:** `...` and `*` globs, plus module-relative vs full path.
 - **`callgraph`:** `EntryPoints` through a route registration, through an exported API of an importable package, and through `main`; none for test-only reach; the cap.
@@ -157,7 +157,7 @@ sensitive:
   - covered sensitive → 🟢.
 - **E2E fixtures:**
   - `sensitive_zero_config`: no config file; an untested `exec.Command` with no callers → 🔴 with the section; a tested SQL write → 🟢 and listed; entry points shown.
-  - `config_file`: a `critical` glob marks a plain function sensitive; `remove: reflect.*` silences a reflect call.
+  - `config_file`: a `critical` glob marks a plain function sensitive; `remove: os/exec.*` silences an os/exec call.
   - A CLI test: an invalid `.mrimpact.yml` → exit 2 and no note.
 - **Existing goldens:** regenerated only where these rules change them (the new column and the Legend), each reviewed line by line.
 

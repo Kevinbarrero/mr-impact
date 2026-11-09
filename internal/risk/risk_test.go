@@ -180,10 +180,29 @@ func TestAssess_SensitiveUntestedNoCallers(t *testing.T) {
 	}
 }
 
-func TestAssess_SensitiveBeatsWiring(t *testing.T) {
-	in := Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Covered: 0, Total: 5, AddedLines: 5}
-	if got := Assess(in); got != Red {
-		t.Fatalf("got %v, want Red", got)
+// Wiring, main and init are exempt from the untested-sensitive rule: they
+// keep today's rating (wiring stays capped at yellow).
+func TestAssess_SensitiveExemptions(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Input
+		want Level
+	}{
+		{"wiring, callers", Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Total: 5, AddedLines: 5, NonTestCallers: 2}, Yellow},
+		{"wiring, no callers", Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Total: 5, AddedLines: 5}, Yellow},
+		{"root, no callers, static", Input{Kind: symbols.Body, Sensitive: true, Root: true, AddedLines: 5}, Yellow},
+		{"root, partial", Input{Kind: symbols.Body, Sensitive: true, Root: true, HasProfile: true, Covered: 2, Total: 5, AddedLines: 5}, Yellow},
+		{"root, untested profile", Input{Kind: symbols.Body, Sensitive: true, Root: true, HasProfile: true, Total: 5, AddedLines: 5}, Yellow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.in.SensitiveUntested() {
+				t.Error("SensitiveUntested = true")
+			}
+			if got := Assess(tt.in); got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
