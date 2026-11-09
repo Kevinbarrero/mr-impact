@@ -69,6 +69,7 @@ func TestE2E(t *testing.T) {
 				CoverProfiles: tc.profiles, Timeout: 5 * time.Minute,
 				Now:       func() time.Time { return now },
 				Sensitive: &table, Critical: fc.Critical,
+				File: &fc, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml",
 			})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -152,6 +153,15 @@ func checkConfigFile(t *testing.T, m report.Model) {
 	}
 	if _, ok := sensitiveOf(m, "describe.Tool"); ok || strings.Contains(rowOf(t, m, "describe.Tool").Kind, "sensitive") {
 		t.Error("describe.Tool calls only os/exec, which the config removed: must not be sensitive")
+	}
+	// The base config had the critical glob; the MR added the removal.
+	if c := m.Config; c == nil || !c.Changed || c.BaseUnreadable || len(c.Changes) != 1 ||
+		c.Changes[0].What != "removes from defaults" || strings.Join(c.Changes[0].Items, ",") != "os/exec.*" {
+		t.Errorf("Config = %+v", m.Config)
+	}
+	const line = "⚙️ .mrimpact.yml: critical `internal/pay/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`)"
+	if !strings.Contains(report.Render(m), "\n"+line+"\n") {
+		t.Errorf("missing config line %q", line)
 	}
 }
 
@@ -516,5 +526,37 @@ func main() {
 		if r := rowOf(t, m, d); r.Level != risk.Yellow || strings.Contains(r.Kind, "wiring") {
 			t.Errorf("%s = %v, want yellow, not wiring (today's rule: untested, no callers)", d, r.Level)
 		}
+	}
+}
+
+// A base config that does not parse never fails the run: the line says the
+// file changed and the base is unreadable.
+func TestRun_ConfigBaseUnreadable(t *testing.T) {
+	write := func(dir, name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base, head := t.TempDir(), t.TempDir()
+	for _, d := range []string{base, head} {
+		write(d, "go.mod", "module example.com/cfg\n\ngo 1.26\n")
+	}
+	write(base, "a.go", "package cfg\n\nfunc F() int { return 1 }\n")
+	write(head, "a.go", "package cfg\n\nfunc F() int { return 2 }\n")
+	write(base, ".mrimpact.yml", "critcal: [x]\n")
+	write(head, ".mrimpact.yml", "sensitive:\n  remove: [os/exec.*]\n")
+	repo, baseSHA, _ := testutil.MakeRepo(t, base, head)
+	fc, err := config.Load(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, File: &fc, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const line = "⚙️ .mrimpact.yml: removes `os/exec.*` — changed in this MR (base config unreadable)"
+	if out := report.Render(m); !strings.Contains(out, "\n"+line+"\n") {
+		t.Errorf("missing %q in\n%s", line, out)
 	}
 }

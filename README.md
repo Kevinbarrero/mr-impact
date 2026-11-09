@@ -14,7 +14,7 @@ Flags: `--dir`, `--base` (env `CI_MERGE_REQUEST_DIFF_BASE_SHA`), `--head HEAD`, 
 
 ## Configuration
 
-No file is needed. With no config file and no flag, every check runs on its built-in defaults, including the sensitive-API table below. A missing `.mrimpact.yml` is the normal case: nothing is printed and nothing is added to the note.
+No file is needed. With no config file and no flag, every check runs on its built-in defaults, including the sensitive-API table below. A missing `.mrimpact.yml` is the normal case: nothing is printed and nothing is added to the note (unless the MR deleted one: see below).
 
 To add project knowledge, put an optional `.mrimpact.yml` at the module root (`--dir`), or name another file with `--config <path>`:
 
@@ -32,6 +32,7 @@ sensitive:
 - Every key is optional; an empty or comments-only file equals no file.
 - Globs: `internal/x/...` matches the package and everything below it; `internal/x/*` matches one path segment (`path.Match`); a glob without the module path is joined to it.
 - Patterns: `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M`; `*` in the method position matches any method, a trailing `*` a prefix (`Execute*`); `pkgpath/...` matches the package and every package below it. Callees are matched by their type-checked package path and name, so aliased imports and methods called through the type are found.
+- The note states the config when it matters: whenever it removes defaults or names `critical` globs, one line under the header reads `⚙️ .mrimpact.yml: critical … · removes … · adds …`. When the MR changed the file (compared with its base version; a missing base file is the empty config), the line ends ` — changed in this MR (MR removes from defaults: os/exec.*)`, listing what the MR added or dropped, or `(base config unreadable)` when the base version does not parse; the base file never fails the run.
 - Parsing is strict. An unknown key, a wrong type, a bad glob, a malformed pattern, a `remove` entry that is not in the default table, or `--config` naming a missing file is a usage error: one line `mrimpact: config: …` on stderr, exit 2, and no note is written or posted.
 
 Default sensitive table (the standard library, plus a few common data-access and crypto libraries, matched by import path; routers such as gin, echo or chi are not in it):
@@ -92,6 +93,7 @@ The note is posted only when `CI_MERGE_REQUEST_IID`, `CI_PROJECT_ID` and `CI_API
 In order, each section only when it has something:
 
 - **Header**: how many functions changed, the 🔴/🟡/🟢 tally of the table's rows and, when new code was grouped, `+N new functions folded into M groups` (`1 group` for one).
+- **Config line**: `⚙️ .mrimpact.yml: …` when the config removes defaults, names critical globs, or was changed by the MR (see Configuration).
 - **Coverage hint**: `ℹ️ N functions are covered only by tests in other packages; …` when changed functions have added lines with 0 % in the coverprofile although tests in another package reach them. A coverprofile made without `-coverpkg` counts same-package tests only; run `go test -coverpkg=./... -coverprofile=…` for line coverage. Their cover cell reads `0 % in profile · reached by tests in <pkg>`, and they count as partly tested, not untested.
 - **Removed `case`, value still exists**: a `case` removed from a switch on a named constant or type that is still declared; those values now go to `default`, or match no case.
 - **Now unused / now only used by tests**: functions the removed code used that nothing reachable from an entry point (`main`, `init`, exported API) calls or takes as a value any more, plus what only they reached. When the base revision loads, what the removed code used is resolved with its types; otherwise it is matched by package and name.

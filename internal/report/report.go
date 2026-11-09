@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
 	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
@@ -73,10 +74,21 @@ type SensitiveRow struct {
 	Untested  bool // the untested-sensitive rule rated it red; listed first, not shown
 }
 
+// ConfigNote is the effective config file as the note states it: shown when
+// it removes defaults or names critical globs, or when the MR changed it.
+type ConfigNote struct {
+	File                    string   // as named: ".mrimpact.yml" or the --config path
+	Critical, Removes, Adds []string // head (effective) values
+	Changed                 bool     // head differs from base
+	BaseUnreadable          bool     // the base file did not parse
+	Changes                 []config.Change
+}
+
 // Model is everything the note shows.
 type Model struct {
 	Funcs        []FuncRow          // unsorted; Render sorts by Level desc, len(Callers) desc, Display
 	Sensitive    []SensitiveRow     // unsorted; Render lists untested first, then by Display
+	Config       *ConfigNote        // nil: nothing to say about the config file
 	RemovedCases []RemovedCase      // behaviour changes: first in the note
 	Unused       []callgraph.Unused // functions this MR left without callers
 	// UnusedGenerated: generated functions (sqlc, protobuf, mocks) nothing
@@ -151,6 +163,7 @@ func Render(m Model) string {
 		fmt.Fprintf(&b, "\\\n+%d new functions folded into %d %s", m.Folded, m.Groups, groups)
 	}
 	b.WriteString("\n\n")
+	writeConfigNote(&b, m.Config)
 
 	if m.CrossPkgOnly > 0 {
 		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
@@ -201,6 +214,60 @@ func Render(m Model) string {
 
 	writeFooter(&b, m)
 	return b.String()
+}
+
+// writeConfigNote writes the one config line under the header: the
+// effective settings that narrow or widen detection, and what the MR changed.
+func writeConfigNote(b *strings.Builder, c *ConfigNote) {
+	if c == nil {
+		return
+	}
+	var parts []string
+	if len(c.Critical) > 0 {
+		parts = append(parts, "critical "+codeJoin(c.Critical))
+	}
+	if len(c.Removes) > 0 {
+		parts = append(parts, "removes "+codeJoin(c.Removes))
+	}
+	if len(c.Adds) > 0 {
+		parts = append(parts, "adds "+codeJoin(c.Adds))
+	}
+	if len(parts) == 0 {
+		parts = []string{"defaults"}
+	}
+	b.WriteString("⚙️ " + c.File + ": " + strings.Join(parts, " · "))
+	if c.Changed {
+		b.WriteString(" — changed in this MR")
+		switch {
+		case c.BaseUnreadable:
+			b.WriteString(" (base config unreadable)")
+		case len(c.Changes) > 0:
+			var cs []string
+			for _, ch := range c.Changes {
+				cs = append(cs, "MR "+ch.What+": "+codeJoin(ch.Items))
+			}
+			b.WriteString(" (" + strings.Join(cs, "; ") + ")")
+		}
+	}
+	b.WriteString("\n\n")
+}
+
+// codeJoin renders items as comma-separated code spans.
+func codeJoin(items []string) string {
+	out := make([]string, len(items))
+	for i, s := range items {
+		out[i] = codeSpan(s)
+	}
+	return strings.Join(out, ", ")
+}
+
+// codeSpan wraps s in a code span; one holding a backtick takes a double
+// backtick fence padded with spaces.
+func codeSpan(s string) string {
+	if strings.Contains(s, "`") {
+		return "`` " + s + " ``"
+	}
+	return "`" + s + "`"
 }
 
 func writeTable(b *strings.Builder, funcs []FuncRow) {

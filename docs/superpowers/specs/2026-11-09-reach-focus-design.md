@@ -107,11 +107,13 @@ sensitive:
   - `internal/x/*` uses `path.Match` semantics on one segment.
   - A glob without the module prefix is joined to the module path.
 
+- **Visibility.** The config is read from the head checkout. Whenever the effective config has `sensitive.remove` entries or `critical` globs, the note shows one line after the header block: `⚙️ .mrimpact.yml: critical <globs> · removes <patterns> · adds <patterns>` (empty parts omitted; `defaults` when none is left; with `--config` the line names the path as given). When the file differs between base and head (the base version is read with `git show`; a base without it is the empty config; an explicit `--config` outside the repository is not compared), the line also appears and ends ` — changed in this MR (MR removes from defaults: os/exec.*; …)`, listing per key what the MR added or dropped (`adds critical` / `drops critical`, `removes from defaults` / `restores defaults`, `adds` / `drops added`). A base file that does not parse reads ` — changed in this MR (base config unreadable)`; the base file never fails the run. Order and comments do not count as a change.
+
 ## 6. Components
 
 | Package | Change |
 |---|---|
-| `internal/config` (new) | `type Config{Critical []string; SensitiveAdd, SensitiveRemove []string}`; `Load(moduleRoot, explicitPath string) (Config, error)`; validation |
+| `internal/config` (new) | `type Config{Critical []string; SensitiveAdd, SensitiveRemove []string}`; `Load(moduleRoot, explicitPath string) (Config, error)`; `Parse(name, io.Reader)`; `Changes(base, head) []Change`; validation |
 | `internal/sensitive` (new) | default table; `type Table`; `NewTable(add, remove []string) (Table, error)`; `Calls(fn *ast.FuncDecl, info *types.Info) []string` (matched API names, deterministic order); `Critical(pkgPath string, globs []string, module string) (glob string, ok bool)` |
 | `callgraph` | `EntryPoints`, `Entry` |
 | `risk` | `Input.Sensitive`; untested-sensitive rule; Legend |
@@ -121,7 +123,7 @@ sensitive:
 
 ## 7. Error handling
 
-- **Config errors:** usage error, exit 2, with a one-line reason on stderr. The note is not written or posted.
+- **Config errors:** usage error, exit 2, with a one-line reason on stderr. The note is not written or posted. This applies to the head file only; the base file is only compared, and one that cannot be read or parsed is stated in the config line.
 - **A function whose declaration can't be found in the loaded program** (build tags): not rated today, so not checked here either (unchanged).
 - **Degraded call graph:** no entry points. Sensitive detection still runs, since it needs only types; without a profile the untested-sensitive rule does not fire (test reach is unknown), with one the profile decides.
 

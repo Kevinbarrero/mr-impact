@@ -10,6 +10,7 @@ import (
 	"go/ast"
 	"go/scanner"
 	"go/types"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
 	"gitlab.com/wh1t3hat/mrimpact/internal/coverage"
 	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
@@ -44,6 +46,12 @@ type Config struct {
 	Now           func() time.Time // nil → time.Now; e2e pins it so Duration renders "0.0 s"
 	Sensitive     *sensitive.Table // nil → the default table (sensitive.NewTable(nil, nil))
 	Critical      []string         // package globs whose functions are sensitive
+	// File is the effective config file (read at head), for the note's
+	// config line; nil: no line. FileName is how the line names it; FileRel,
+	// when set, is its repo-relative path, read at the base to tell what the
+	// MR changed.
+	File              *config.Config
+	FileName, FileRel string
 }
 
 // Run analyzes Base..Head in cfg.Dir. err is non-nil only for internal
@@ -99,7 +107,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	case !errors.Is(err, diff.ErrNoMergeBase):
 		return report.Model{}, err
 	}
-	m := report.Model{BaseSHA: baseSHA, Coverage: "static"}
+	m := report.Model{BaseSHA: baseSHA, Coverage: "static", Config: configNote(ctx, cfg, baseSHA)}
 
 	// 2. Diff.
 	changes, err := diff.Run(ctx, cfg.Dir, baseSHA, head)
@@ -378,6 +386,36 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 	}
 	return m, nil
+}
+
+// configNote states the effective config when it removes defaults or names
+// critical globs, or when the MR changed the file (head against base; a base
+// without the file is the empty config). The base file never fails the run:
+// one that cannot be read or parsed is reported as unreadable.
+func configNote(ctx context.Context, cfg Config, baseSHA string) *report.ConfigNote {
+	if cfg.File == nil {
+		return nil
+	}
+	head := *cfg.File
+	n := &report.ConfigNote{File: cfg.FileName, Critical: head.Critical, Removes: head.SensitiveRemove, Adds: head.SensitiveAdd}
+	if cfg.FileRel != "" {
+		var base config.Config
+		src, err := diff.ShowFile(ctx, cfg.Dir, baseSHA, cfg.FileRel)
+		if err == nil {
+			base, err = config.Parse(baseSHA[:min(7, len(baseSHA))]+":"+cfg.FileRel, bytes.NewReader(src))
+		} else if errors.Is(err, fs.ErrNotExist) {
+			err = nil
+		}
+		if err != nil {
+			n.Changed, n.BaseUnreadable = true, true
+		} else if n.Changes = config.Changes(base, head); len(n.Changes) > 0 {
+			n.Changed = true
+		}
+	}
+	if !n.Changed && len(head.Critical) == 0 && len(head.SensitiveRemove) == 0 {
+		return nil
+	}
+	return n
 }
 
 // interfaceMethods returns a predicate reporting whether a dead method

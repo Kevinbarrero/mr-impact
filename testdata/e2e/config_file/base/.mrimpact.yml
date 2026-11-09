@@ -1,0 +1,3 @@
+# Project knowledge for mrimpact.
+critical:
+  - internal/pay/...

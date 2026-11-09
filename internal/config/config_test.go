@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -95,5 +96,40 @@ func TestLoad_ExplicitPathWins(t *testing.T) {
 	cfg, err := Load(dir, explicit)
 	if err != nil || !reflect.DeepEqual(cfg.Critical, []string{"explicit/..."}) {
 		t.Fatalf("got %+v, %v", cfg, err)
+	}
+}
+
+func TestParse(t *testing.T) {
+	cfg, err := Parse("base:.mrimpact.yml", strings.NewReader("sensitive:\n  remove: [os/exec.*]\n"))
+	if err != nil || !reflect.DeepEqual(cfg, Config{SensitiveRemove: []string{"os/exec.*"}}) {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	if _, err := Parse("base:.mrimpact.yml", strings.NewReader("nope: 1\n")); !errors.Is(err, ErrConfig) || !strings.Contains(err.Error(), "base:.mrimpact.yml") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestChanges(t *testing.T) {
+	base := Config{Critical: []string{"a/...", "b"}, SensitiveAdd: []string{"x.F"}, SensitiveRemove: []string{"os.Remove"}}
+	head := Config{Critical: []string{"a/...", "c"}, SensitiveAdd: []string{"y.G"}, SensitiveRemove: []string{"os.Remove", "os/exec.*"}}
+	want := []Change{
+		{"adds critical", []string{"c"}}, {"drops critical", []string{"b"}},
+		{"removes from defaults", []string{"os/exec.*"}},
+		{"adds", []string{"y.G"}}, {"drops added", []string{"x.F"}},
+	}
+	if got := Changes(base, head); !reflect.DeepEqual(got, want) {
+		t.Errorf("Changes = %q, want %q", got, want)
+	}
+	if got := Changes(head, base); !slices.ContainsFunc(got, func(c Change) bool {
+		return c.What == "restores defaults" && reflect.DeepEqual(c.Items, []string{"os/exec.*"})
+	}) {
+		t.Errorf("reverse Changes = %q", got)
+	}
+	if got := Changes(base, base); got != nil {
+		t.Errorf("same config: %q", got)
+	}
+	// Order and empty-vs-nil do not count as a change.
+	if got := Changes(Config{Critical: []string{"b", "a"}, SensitiveAdd: []string{}}, Config{Critical: []string{"a", "b"}}); got != nil {
+		t.Errorf("reordered: %q", got)
 	}
 }
