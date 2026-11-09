@@ -76,7 +76,7 @@ The target itself counts if it qualifies. Test functions are never entry points.
 
 ### Effect
 
-- **Table:** a new column **Entry points** shows the first 2 as `GET("/x", …)`, `api orders.Create`, `main`, then ` +N`, or `—` when none. A registration and an `api` function render as code spans (a double-backtick span when the text holds a backtick), `|` escaped, so `*`, `_` and `<` stay literal. When no row has any entry point, the column is omitted, as `Registered` already is. When every row the table shows has `main` among its entry points, `main` tells them apart in no way and is left out of every cell (and of ` +N`); a cell left empty renders `—`.
+- **Table:** a new column **Entry points** shows the first 2 as `GET("/x", …)`, `api orders.Create`, `main`, then ` +N`, or `—` when none. A registration and an `api` function render as code spans (a double-backtick span when the text holds a backtick), `|` escaped, so `*`, `_` and `<` stay literal. When no row has any entry point, the column is omitted, as `Registered` already is. When the table shows at least 2 rows, an entry point every shown row has (e.g. `main`, `RunContext(…)`) tells them apart in no way: it is left out of every cell (and of ` +N`) and stated once in a line directly above the table, `All changes shown are reached from: <entry>, <entry>`, rendered as in the cells and in their order; a cell left empty renders `—`.
 - **Rating:** unchanged. Entry points are context only.
 - **Degraded call graph:** the column is omitted.
 - A registration that is not a call argument (no call text) shows its `file:line`, as the Registered column does; entries are deduplicated on that text.

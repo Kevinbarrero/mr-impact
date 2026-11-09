@@ -431,7 +431,8 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 			{Kind: "main", Display: "main.main"}}},
 	}
 	out := Render(m)
-	for _, want := range []string{"| `x.A` | body | 0 | api `x.Do`, init | n/a |", "| `x.B` | body | 0 | — | n/a |"} {
+	for _, want := range []string{"| `x.A` | body | 0 | api `x.Do`, init | n/a |", "| `x.B` | body | 0 | — | n/a |",
+		"All changes shown are reached from: main\n\n| Risk |"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
@@ -443,6 +444,67 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "All changes shown") {
+		t.Errorf("common line with a row reached from nothing:\n%s", out)
+	}
+}
+
+// (a) A registration every shown row has is left out of the cells and
+// stated once above the table.
+func TestRender_EntryPointsCommonRegistration(t *testing.T) {
+	run := callgraph.Entry{Kind: "registered", Display: "RunContext(…)"}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			run, {Kind: "registered", Display: `Sub("a", …)`}}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{run}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"All changes shown are reached from: `RunContext(…)`\n\n| Risk |",
+		"| `x.A` | body | 0 | `Sub(\"a\", …)` | n/a |",
+		"| `x.B` | body | 0 | — | n/a |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "RunContext") != 1 {
+		t.Errorf("RunContext stated more than once:\n%s", out)
+	}
+}
+
+// (b) main and a registration both shared: both stated, in the cells' order.
+func TestRender_EntryPointsCommonMainAndRegistration(t *testing.T) {
+	run := callgraph.Entry{Kind: "registered", Display: "RunContext(…)"}
+	main := callgraph.Entry{Kind: "main", Display: "main.main"}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			run, {Kind: "api", Display: "x.Do"}, main}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{run, main, {Kind: "init", Display: "x.init"}}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"All changes shown are reached from: `RunContext(…)`, main\n\n| Risk |",
+		"| `x.A` | body | 0 | api `x.Do` | n/a |",
+		"| `x.B` | body | 0 | init | n/a |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+// (c) With a single row nothing is common: the table is unchanged.
+func TestRender_EntryPointsSingleRowUnchanged(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+		{Kind: "registered", Display: "RunContext(…)"}, {Kind: "main", Display: "main.main"}}}}
+	out := Render(m)
+	if !strings.Contains(out, "| `x.A` | body | 0 | `RunContext(…)`, main | n/a |") || strings.Contains(out, "All changes shown") {
+		t.Errorf("single row changed:\n%s", out)
 	}
 }
 

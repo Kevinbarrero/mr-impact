@@ -27,6 +27,8 @@
 
 - `Subscribe("hedge", …)` → `svc.onHedge` — `internal/svc/other.go:12`
 
+All changes shown are reached from: main
+
 | Risk | Function | Change | Callers | Registered | Entry points | Added-line coverage |
 |---|---|---|---|---|---|---|
 | 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | `Subscribe("select", …)` | reached by test |
