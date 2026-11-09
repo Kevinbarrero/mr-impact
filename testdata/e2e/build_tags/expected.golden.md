@@ -1,16 +1,16 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 1 functions changed
-**🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
+**🔴 0 · 🟡 1 · 🟢 0** · coverage: `static` · base `0000000`
 
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
-| 🔴 | `main.Plain` | body | 1 | not reached |
+| 🟡 | `main.Plain` | body · wiring | 1 | not reached |
 
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
 
 ```mermaid
 flowchart RL
-  n0["🔴 main.Plain"]:::red
+  n0["🟡 main.Plain"]:::yellow
   n1["main.main"]
   n1 --> n0
   subgraph legend ["Legend"]

@@ -40,6 +40,8 @@ func TestE2E(t *testing.T) {
 		{name: "no_go_changes"},
 		{name: "coverprofile", profiles: []string{"coverage.out"}},
 		{name: "removal"},
+		{name: "cross_pkg_coverage", profiles: []string{"coverage.out"}},
+		{name: "wiring"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,7 +231,7 @@ func TestHeadParseErrorIsBuildFailure(t *testing.T) {
 // the base branch after head branched off is not part of the MR.
 func TestDiffsAgainstMergeBase(t *testing.T) {
 	base, head := t.TempDir(), t.TempDir()
-	const src = "package calc\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n\nfunc Sub(a, b int) int {\n\treturn a - b\n}\n"
+	const src = "package calc\n\nfunc Add(a, b int) int {\n\tif a < 0 {\n\t\treturn 0\n\t}\n\treturn a + b\n}\n\nfunc Sub(a, b int) int {\n\treturn a - b\n}\n"
 	for dir, s := range map[string]string{base: src, head: strings.Replace(src, "a + b", "b + a", 1)} {
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/fx\n\ngo 1.26.0\n"), 0o644); err != nil {
 			t.Fatal(err)
