@@ -15,8 +15,24 @@ func TestAssess(t *testing.T) {
 	}{
 		{
 			name: "exported signature change fully covered is red",
-			in: Input{Kind: symbols.Signature, Exported: true, NonTestCallers: 2,
+			in: Input{Kind: symbols.Signature, Exported: true, Importable: true, NonTestCallers: 2,
 				HasProfile: true, Covered: 5, Total: 5},
+			want: Red,
+		},
+		{
+			name: "exported signature change in a non-importable package is rated like a body change",
+			in: Input{Kind: symbols.Signature, Exported: true, Importable: false, NonTestCallers: 2,
+				HasProfile: true, Covered: 5, Total: 5},
+			want: Green,
+		},
+		{
+			name: "removed branch with no added lines, reached by a test, is yellow",
+			in:   Input{Kind: symbols.Body, NonTestCallers: 3, HasProfile: true, TestReached: true, BranchesRemoved: true},
+			want: Yellow,
+		},
+		{
+			name: "removed branch never hides red",
+			in:   Input{Kind: symbols.Body, NonTestCallers: 3, HasProfile: true, BranchesRemoved: true},
 			want: Red,
 		},
 		{
@@ -107,7 +123,7 @@ func TestLevelEmoji(t *testing.T) {
 }
 
 func TestLegend(t *testing.T) {
-	const want = "🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered"
+	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test)"
 	if Legend != want {
 		t.Errorf("Legend = %q, want %q", Legend, want)
 	}

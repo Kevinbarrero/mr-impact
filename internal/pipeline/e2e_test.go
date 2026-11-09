@@ -39,6 +39,7 @@ func TestE2E(t *testing.T) {
 		{name: "decl_change"},
 		{name: "no_go_changes"},
 		{name: "coverprofile", profiles: []string{"coverage.out"}},
+		{name: "removal"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

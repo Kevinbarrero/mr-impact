@@ -3,11 +3,14 @@ package report
 
 import (
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
+	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
 )
 
@@ -18,32 +21,70 @@ const (
 	maxTableRows   = 50
 	maxDiagramNode = 20
 	maxCallerList  = 10
+	maxUnusedList  = 15
+	maxInlineList  = 5 // longer lists are counted and collapsed
 )
 
 // FuncRow is one changed function.
 type FuncRow struct {
-	Level     risk.Level
-	Display   string
-	Kind      string // "new" | "body" | "signature" | "signature (exported)"
-	Callers   []callgraph.Caller
-	CoverText string // "0 % (0/12)", "n/a", "reached by test", "not reached"
+	Level      risk.Level
+	Display    string
+	Kind       string // "new" | "body" | "signature" | "signature (exported)"
+	Callers    []callgraph.Caller
+	CoverText  string           // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
+	Registered []callgraph.Site // where the function is passed as a value (handler/callback registration)
+}
+
+// RemovedCase is a case value removed from a switch while the value still
+// exists.
+type RemovedCase struct {
+	Func, File string
+	Line       int // HEAD line of the switch
+	Case       string
+	HasDefault bool
+}
+
+// DeletedFunc is a function removed by the MR.
+type DeletedFunc struct {
+	Display string
+	File    string // BASE path
+}
+
+// Decl is a changed top-level declaration outside any function.
+type Decl struct {
+	What string // "type Foo", "var x", "const y"
+	File string
 }
 
 // Model is everything the note shows.
 type Model struct {
-	Funcs        []FuncRow // unsorted; Render sorts by Level desc, len(Callers) desc, Display
-	Deleted      []string
-	Decls        []string
-	TestsTouched []string
-	NotAnalyzed  []string
-	Warnings     []string
-	Coverage     string // "coverprofile" | "static"
-	BaseSHA      string // rendered as first 7 chars
-	Degraded     bool
-	Failure      string // non-empty: only marker + failure line + footer
-	NoGoChanges  bool   // marker + "No Go code changes" + footer
-	Version      string
-	Duration     time.Duration
+	Funcs        []FuncRow          // unsorted; Render sorts by Level desc, len(Callers) desc, Display
+	RemovedCases []RemovedCase      // behaviour changes: first in the note
+	Unused       []callgraph.Unused // functions this MR left without callers
+	// UnusedGenerated: generated functions (sqlc, protobuf, mocks) nothing
+	// uses any more; to remove from their source and regenerate.
+	UnusedGenerated []callgraph.Unused
+	// UnusedConfig: configuration fields (often env vars) nothing reads any
+	// more: deployments still set them for nothing.
+	UnusedConfig []configfields.Field
+	// Registrations removed with no replacement (base positions), added
+	// (head positions) and rewired to another handler: routes,
+	// subscriptions, hooks the MR unwires, wires or swaps.
+	RegRemoved, RegAdded []registrations.Registration
+	RegRewired           []registrations.Rewired
+	Deleted              []DeletedFunc
+	DeletedFiles         []string
+	Decls                []Decl
+	TestsTouched         []string
+	NotAnalyzed          []string
+	Warnings             []string
+	Coverage             string // "coverprofile" | "static"
+	BaseSHA              string // rendered as first 7 chars
+	Degraded             bool
+	Failure              string // non-empty: only marker + failure line + footer
+	NoGoChanges          bool   // marker + "No Go code changes" + footer
+	Version              string
+	Duration             time.Duration
 }
 
 // Render produces the Markdown note.
@@ -81,26 +122,29 @@ func Render(m Model) string {
 	}
 	b.WriteString("\n\n")
 
+	writeRemovedCases(&b, m.RemovedCases)
+	writeUnused(&b, m.Unused)
+	writeConfig(&b, m.UnusedConfig)
+	writeUnusedList(&b, "🧩 **Generated code no longer used** — remove it from its source (.sql, .proto, interface) and regenerate", m.UnusedGenerated)
+	writeRegistrations(&b, "🔌 **Registrations removed, no replacement** — these calls no longer get a handler; check each is intended", "base", m.RegRemoved)
+	writeRewired(&b, m.RegRewired)
+	writeRegistrations(&b, "🔌 **Registrations added**", "head", m.RegAdded)
+
 	// With no rated functions there is nothing for the table, diagram or
 	// caller list to show; only the context lines and limits remain.
 	if len(funcs) > 0 {
 		writeTable(&b, funcs)
 	}
 
-	for _, l := range []struct {
-		prefix string
-		items  []string
-	}{
-		{"➖ Deleted: ", m.Deleted},
-		{"📝 Declarations changed: ", m.Decls},
-		{"🧪 Tests touched in this MR: ", m.TestsTouched},
-	} {
-		if len(l.items) > 0 {
-			b.WriteString(l.prefix + codeList(l.items) + "\n")
-		}
-	}
-	if len(m.Deleted)+len(m.Decls)+len(m.TestsTouched) > 0 {
-		b.WriteString("\n")
+	writeDeleted(&b, m.Deleted, m.DeletedFiles)
+	writeDecls(&b, m.Decls)
+	switch n := len(m.TestsTouched); {
+	case n == 0:
+	case n <= maxInlineList:
+		b.WriteString("🧪 Tests touched in this MR: " + codeList(m.TestsTouched) + "\n\n")
+	default:
+		fmt.Fprintf(&b, "🧪 Tests touched in this MR: %s\n\n", count(n, "file"))
+		writeGrouped(&b, fmt.Sprintf("Test files (%d)", n), m.TestsTouched, func(s string) (string, string) { return path.Dir(s), path.Base(s) })
 	}
 
 	if len(funcs) > 0 {
@@ -111,7 +155,8 @@ func Render(m Model) string {
 	b.WriteString("<details><summary>⚠️ Limits of this analysis</summary>\n\n")
 	b.WriteString("- Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.\n")
 	b.WriteString("- This repo only: callers in other services (HTTP/gRPC) are not visible.\n")
-	b.WriteString("- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers.\n")
+	b.WriteString("- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.\n")
+	b.WriteString("- Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.\n")
 	for _, s := range m.NotAnalyzed {
 		b.WriteString("- Not analyzed: " + s + "\n")
 	}
@@ -125,17 +170,290 @@ func Render(m Model) string {
 }
 
 func writeTable(b *strings.Builder, funcs []FuncRow) {
-	b.WriteString("| Risk | Function | Change | Callers | Added-line coverage |\n|---|---|---|---|---|\n")
+	withReg := false
+	for i, f := range funcs {
+		if i < maxTableRows && len(f.Registered) > 0 {
+			withReg = true
+		}
+	}
+	if withReg {
+		b.WriteString("| Risk | Function | Change | Callers | Registered | Added-line coverage |\n|---|---|---|---|---|---|\n")
+	} else {
+		b.WriteString("| Risk | Function | Change | Callers | Added-line coverage |\n|---|---|---|---|---|\n")
+	}
 	for i, f := range funcs {
 		if i == maxTableRows {
 			break
 		}
-		fmt.Fprintf(b, "| %s | `%s` | %s | %s | %s |\n", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers), cell(f.CoverText))
+		fmt.Fprintf(b, "| %s | `%s` | %s | %s | ", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers))
+		if withReg {
+			b.WriteString(registeredCell(f.Registered) + " | ")
+		}
+		fmt.Fprintf(b, "%s |\n", cell(f.CoverText))
 	}
 	if len(funcs) > maxTableRows {
 		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
 	}
 	b.WriteString("\n")
+}
+
+// registeredCell shows the first registration site and how many more.
+func registeredCell(rs []callgraph.Site) string {
+	if len(rs) == 0 {
+		return ""
+	}
+	out := "`" + cell(siteText(rs[0])) + "`"
+	if len(rs) > 1 {
+		out += fmt.Sprintf(" +%d", len(rs)-1)
+	}
+	return out
+}
+
+func siteText(s callgraph.Site) string {
+	if s.Call == "" {
+		return fmt.Sprintf("%s:%d", s.File, s.Line)
+	}
+	return strings.ReplaceAll(s.Call, "`", "'")
+}
+
+// writeUnused lists the functions the MR left without callers: dead code,
+// or code that only tests still exercise.
+func writeUnused(b *strings.Builder, us []callgraph.Unused) {
+	var dead, tests []callgraph.Unused
+	for _, u := range us {
+		if u.TestOnly {
+			tests = append(tests, u)
+		} else {
+			dead = append(dead, u)
+		}
+	}
+	writeUnusedList(b, "🪦 **Now unused** — nothing reachable calls these after this MR", dead)
+	writeUnusedList(b, "🧫 **Now only used by tests** — no production path reaches these after this MR", tests)
+}
+
+func writeConfig(b *strings.Builder, fs []configfields.Field) {
+	if len(fs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "⚙️ **Config no longer read** — remove the field and the setting from deployments (%d):\n\n", len(fs))
+	for i, f := range fs {
+		if i == maxUnusedList {
+			fmt.Fprintf(b, "- … and %d more\n", len(fs)-maxUnusedList)
+			break
+		}
+		fmt.Fprintf(b, "- `%s` `%s` — `%s:%d`", f.Display, strings.ReplaceAll(f.Tag, "`", "'"), f.File, f.Line)
+		if f.TestOnly {
+			b.WriteString(" (read only by tests)")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+}
+
+func writeUnusedList(b *strings.Builder, title string, items []callgraph.Unused) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "%s (%d):\n\n", title, len(items))
+	for i, u := range items {
+		if i == maxUnusedList {
+			fmt.Fprintf(b, "- … and %d more\n", len(items)-maxUnusedList)
+			break
+		}
+		fmt.Fprintf(b, "- `%s` — `%s:%d`", u.Display, u.File, u.Line)
+		switch {
+		case u.Via != "":
+			fmt.Fprintf(b, " (only reached through `%s`)", u.Via)
+		case len(u.DeadCallers) > 0:
+			fmt.Fprintf(b, " (its remaining callers are unreachable too: %s)", codeList(u.DeadCallers))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+}
+
+func writeRegistrations(b *strings.Builder, title, side string, rs []registrations.Registration) {
+	if len(rs) == 0 {
+		return
+	}
+	line := func(r registrations.Registration) string {
+		return fmt.Sprintf("- `%s` → `%s` — `%s:%d`\n", strings.ReplaceAll(r.Call, "`", "'"), r.Handler, r.File, r.Line)
+	}
+	fmt.Fprintf(b, "%s (%d, positions in %s):\n\n", title, len(rs), side)
+	if len(rs) <= maxUnusedList {
+		for _, r := range rs {
+			b.WriteString(line(r))
+		}
+		b.WriteString("\n")
+		return
+	}
+	byCallee := map[string][]registrations.Registration{}
+	var callees []string
+	for _, r := range rs {
+		if _, ok := byCallee[r.Callee]; !ok {
+			callees = append(callees, r.Callee)
+		}
+		byCallee[r.Callee] = append(byCallee[r.Callee], r)
+	}
+	sort.Slice(callees, func(i, j int) bool {
+		a, c := len(byCallee[callees[i]]), len(byCallee[callees[j]])
+		if a != c {
+			return a > c
+		}
+		return callees[i] < callees[j]
+	})
+	var parts []string
+	for _, c := range callees {
+		parts = append(parts, fmt.Sprintf("`%s` %d", c, len(byCallee[c])))
+	}
+	b.WriteString("By call: " + strings.Join(parts, " · ") + "\n\n")
+	fmt.Fprintf(b, "<details><summary>All %d</summary>\n\n", len(rs))
+	for _, c := range callees {
+		fmt.Fprintf(b, "**`%s`** (%d)\n\n", c, len(byCallee[c]))
+		for _, r := range byCallee[c] {
+			b.WriteString(line(r))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("</details>\n\n")
+}
+
+func writeRemovedCases(b *strings.Builder, cs []RemovedCase) {
+	if len(cs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "↪️ **Removed `case`, value still exists** — these values now take another path (%d):\n\n", len(cs))
+	for i, c := range cs {
+		if i == maxUnusedList {
+			fmt.Fprintf(b, "- … and %d more\n", len(cs)-maxUnusedList)
+			break
+		}
+		path := "now matches no case"
+		if c.HasDefault {
+			path = "now goes to `default`"
+		}
+		fmt.Fprintf(b, "- `case %s` in `%s` — %s — `%s:%d`\n", strings.ReplaceAll(c.Case, "`", "'"), c.Func, path, c.File, c.Line)
+	}
+	b.WriteString("\n")
+}
+
+func writeRewired(b *strings.Builder, rs []registrations.Rewired) {
+	if len(rs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "🔁 **Registrations rewired** — same call, another handler (%d):\n\n", len(rs))
+	for i, r := range rs {
+		if i == maxUnusedList {
+			fmt.Fprintf(b, "- … and %d more\n", len(rs)-maxUnusedList)
+			break
+		}
+		fmt.Fprintf(b, "- `%s`: `%s` → `%s` — `%s:%d`\n", strings.ReplaceAll(r.To.Call, "`", "'"), r.From.Handler, r.To.Handler, r.To.File, r.To.Line)
+	}
+	b.WriteString("\n")
+}
+
+func writeDeleted(b *strings.Builder, ds []DeletedFunc, files []string) {
+	if len(ds) == 0 && len(files) == 0 {
+		return
+	}
+	b.WriteString("➖ Deleted: ")
+	var parts []string
+	switch {
+	case len(ds) == 0:
+	case len(ds) <= maxInlineList:
+		names := make([]string, len(ds))
+		for i, d := range ds {
+			names[i] = d.Display
+		}
+		parts = append(parts, codeList(names))
+	default:
+		dirs := map[string]bool{}
+		for _, d := range ds {
+			dirs[path.Dir(d.File)] = true
+		}
+		p := count(len(ds), "function")
+		if len(dirs) > 1 {
+			p += fmt.Sprintf(" in %d packages", len(dirs))
+		}
+		parts = append(parts, p)
+	}
+	if len(files) > 0 {
+		parts = append(parts, count(len(files), "file")+" removed")
+	}
+	b.WriteString(strings.Join(parts, " · ") + "\n\n")
+	if len(ds) <= maxInlineList {
+		return
+	}
+	items := make([]string, len(ds))
+	for i, d := range ds {
+		items[i] = d.Display + "\x00" + d.File
+	}
+	writeGrouped(b, fmt.Sprintf("Deleted functions (%d)", len(ds)), items, func(s string) (string, string) {
+		display, f, _ := strings.Cut(s, "\x00")
+		return path.Dir(f), unqualified(display)
+	})
+}
+
+func writeDecls(b *strings.Builder, ds []Decl) {
+	if len(ds) == 0 {
+		return
+	}
+	files := map[string]bool{}
+	items := make([]string, len(ds))
+	for i, d := range ds {
+		files[d.File] = true
+		items[i] = d.What + "\x00" + d.File
+	}
+	if len(ds) <= maxInlineList {
+		names := make([]string, len(ds))
+		for i, d := range ds {
+			names[i] = d.What + " in " + d.File
+		}
+		b.WriteString("📝 Declarations changed: " + codeList(names) + "\n\n")
+		return
+	}
+	fmt.Fprintf(b, "📝 Declarations changed: %d in %s\n\n", len(ds), count(len(files), "file"))
+	writeGrouped(b, fmt.Sprintf("Declarations (%d)", len(ds)), items, func(s string) (string, string) {
+		what, f, _ := strings.Cut(s, "\x00")
+		return f, what
+	})
+}
+
+// writeGrouped writes items as a collapsed list, one line per group (in
+// sorted order), each group's names in input order.
+func writeGrouped(b *strings.Builder, summary string, items []string, split func(string) (group, name string)) {
+	var order []string
+	byGroup := map[string][]string{}
+	for _, it := range items {
+		g, n := split(it)
+		if _, ok := byGroup[g]; !ok {
+			order = append(order, g)
+		}
+		byGroup[g] = append(byGroup[g], n)
+	}
+	sort.Strings(order)
+	fmt.Fprintf(b, "<details><summary>%s</summary>\n\n", summary)
+	for _, g := range order {
+		names := byGroup[g]
+		fmt.Fprintf(b, "- `%s` (%d): %s\n", g, len(names), codeList(names))
+	}
+	b.WriteString("\n</details>\n\n")
+}
+
+// unqualified drops the package-clause prefix of a Display name; the group
+// already names the package.
+func unqualified(display string) string {
+	if _, rest, ok := strings.Cut(display, "."); ok {
+		return rest
+	}
+	return display
+}
+
+func count(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func writeFooter(b *strings.Builder, m Model) {
@@ -199,81 +517,159 @@ func callerCell(cs []callgraph.Caller) string {
 	return fmt.Sprint(len(cs))
 }
 
+const maxDiagramCallers = 3 // per function; the rest become one "+N more callers" node
+
+// writeDiagram draws the changed functions (riskiest first) and, compactly,
+// who reaches them: up to maxDiagramCallers each, the code that registered
+// a callback first (one dashed edge, skipping the generic dispatcher), then
+// direct callers; the rest as one "+N" node. Everything is in the caller
+// list below.
 func writeDiagram(b *strings.Builder, funcs []FuncRow) {
 	type node struct {
-		id    string
-		label string
-		class string
+		id, label, class, shape string
 	}
 	var order []string
 	nodes := map[string]*node{}
-	all := map[string]bool{} // every distinct Display, for the not-shown count
-	add := func(display, emoji, class string) {
-		if nodes[display] != nil {
-			return
+	add := func(key, label, class, shape string) *node {
+		if n := nodes[key]; n != nil {
+			return n
 		}
-		n := &node{id: fmt.Sprintf("n%d", len(order)), class: class, label: quote(display)}
-		if emoji != "" {
-			n.label = quote(emoji + " " + display)
-		}
-		nodes[display] = n
-		order = append(order, display)
+		n := &node{id: fmt.Sprintf("n%d", len(order)), label: quote(label), class: class, shape: shape}
+		nodes[key] = n
+		order = append(order, key)
+		return n
 	}
+	changed := map[string]bool{}
 	for _, f := range funcs {
-		all[f.Display] = true
-		for _, c := range f.Callers {
-			all[c.Display] = true
+		changed[f.Display] = true
+	}
+	var edges []string
+	seenEdge := map[string]bool{}
+	edge := func(from, to *node, style string) {
+		e := from.id + " " + style + " " + to.id
+		if from != to && !seenEdge[e] {
+			seenEdge[e] = true
+			edges = append(edges, e)
 		}
 	}
+
+	shownFuncs := 0
 	for _, f := range funcs {
 		if len(order) >= maxDiagramNode {
 			break
 		}
-		add(f.Display, f.Level.Emoji(), className(f.Level))
+		shownFuncs++
+		fn := add(f.Display, f.Level.Emoji()+" "+f.Display, className(f.Level), "")
+		fn.label, fn.class = quote(f.Level.Emoji()+" "+f.Display), className(f.Level) // it may exist as a caller
+
+		// Candidates: registrants, then direct callers and dispatchers
+		// nobody registered through.
+		registrantVia := map[string]bool{}
+		var picks []callgraph.Caller
 		for _, c := range f.Callers {
-			if len(order) >= maxDiagramNode {
+			if c.Kind == callgraph.Registers {
+				picks = append(picks, c)
+				registrantVia[c.Via] = true
+			}
+		}
+		for _, c := range f.Callers {
+			if c.Depth == 1 && c.Kind != callgraph.Registers && !(c.Kind == callgraph.Dispatch && registrantVia[c.Display]) {
+				picks = append(picks, c)
+			}
+		}
+		shown := 0
+		for _, c := range picks {
+			if shown == maxDiagramCallers || len(order) >= maxDiagramNode {
 				break
 			}
-			add(c.Display, "", "")
+			class := ""
+			label := c.Display
+			if changed[c.Display] {
+				continue // drawn as a changed function with its own risk
+			}
+			cn := add(c.Display, label, class, "")
+			switch c.Kind {
+			case callgraph.Registers:
+				edge(cn, fn, `-. "registers via `+shortName(c.Via)+`" .->`)
+			case callgraph.Dispatch:
+				edge(cn, fn, `-. "calls the callback" .->`)
+			default:
+				edge(cn, fn, "-->")
+			}
+			shown++
+		}
+		// "+N": direct callers not drawn; not the dispatchers a
+		// registrant's edge stands for, nor changed callers (drawn as
+		// themselves, linked below). Callers' callers are in the list.
+		rest := 0
+		for _, c := range f.Callers {
+			if c.Depth == 1 && !changed[c.Display] && !(c.Kind == callgraph.Dispatch && registrantVia[c.Display]) {
+				rest++
+			}
+		}
+		for _, c := range picks {
+			if c.Depth == 1 && nodes[c.Display] != nil && !changed[c.Display] {
+				rest--
+			}
+		}
+		if rest > 0 && len(order) < maxDiagramNode {
+			more := add("+more "+f.Display, "+"+count(rest, "more caller"), "", "round")
+			edge(more, fn, "-.->")
 		}
 	}
-	// A changed function listed later may already exist as a plain caller node.
+	// Calls and registrations between changed functions, once every drawn
+	// one has a node.
 	for _, f := range funcs {
-		if n := nodes[f.Display]; n != nil && n.class == "" {
-			n.label, n.class = quote(f.Level.Emoji()+" "+f.Display), className(f.Level)
+		for _, c := range f.Callers {
+			from, to := nodes[c.Display], nodes[f.Display]
+			if !changed[c.Display] || from == nil || to == nil {
+				continue
+			}
+			switch {
+			case c.Kind == callgraph.Registers:
+				edge(from, to, `-. "registers via `+shortName(c.Via)+`" .->`)
+			case c.Depth == 1 && c.Kind == callgraph.Dispatch:
+				edge(from, to, `-. "calls the callback" .->`)
+			case c.Depth == 1:
+				edge(from, to, "-->")
+			}
 		}
 	}
 
-	hidden := len(all) - len(order)
-	b.WriteString("```mermaid\ngraph RL\n")
+	b.WriteString("**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.\n\n")
+	b.WriteString("```mermaid\nflowchart RL\n")
 	usedClass := map[string]bool{}
-	for _, d := range order {
-		n := nodes[d]
+	for _, k := range order {
+		n := nodes[k]
+		open, closing := "[", "]"
+		if n.shape == "round" {
+			open, closing = "([", "])"
+		}
 		if n.class != "" {
 			usedClass[n.class] = true
-			fmt.Fprintf(b, "  %s[%s]:::%s\n", n.id, n.label, n.class)
+			fmt.Fprintf(b, "  %s%s%s%s:::%s\n", n.id, open, n.label, closing, n.class)
 		} else {
-			fmt.Fprintf(b, "  %s[%s]\n", n.id, n.label)
+			fmt.Fprintf(b, "  %s%s%s%s\n", n.id, open, n.label, closing)
 		}
 	}
-	seenEdge := map[string]bool{}
-	for _, f := range funcs {
-		for _, c := range f.Callers {
-			via := c.Via
-			if via == "" {
-				via = f.Display
-			}
-			from, to := nodes[c.Display], nodes[via]
-			if from == nil || to == nil || from == to {
-				continue
-			}
-			e := from.id + " --> " + to.id
-			if !seenEdge[e] {
-				seenEdge[e] = true
-				fmt.Fprintf(b, "  %s\n", e)
-			}
+	for _, e := range edges {
+		fmt.Fprintf(b, "  %s\n", e)
+	}
+	b.WriteString("  subgraph legend [\"Legend\"]\n    direction LR\n")
+	for _, l := range []struct{ id, label, class string }{
+		{"lr", "🔴 changed, not tested", "red"},
+		{"ly", "🟡 partly tested / branch removed", "yellow"},
+		{"lg", "🟢 changed, tested", "green"},
+		{"lc", "caller, not changed", ""},
+	} {
+		if l.class != "" {
+			usedClass[l.class] = true
+			fmt.Fprintf(b, "    %s[%s]:::%s\n", l.id, quote(l.label), l.class)
+		} else {
+			fmt.Fprintf(b, "    %s[%s]\n", l.id, quote(l.label))
 		}
 	}
+	b.WriteString("  end\n")
 	for _, cl := range []struct{ name, style string }{
 		{"red", "fill:#fdd,stroke:#c00"},
 		{"yellow", "fill:#ffd,stroke:#c90"},
@@ -283,13 +679,18 @@ func writeDiagram(b *strings.Builder, funcs []FuncRow) {
 			fmt.Fprintf(b, "  classDef %s %s\n", cl.name, cl.style)
 		}
 	}
-	if hidden > 0 {
-		fmt.Fprintf(b, "  %%%% +%d not shown\n", hidden)
-	}
 	b.WriteString("```\n\n")
-	if hidden > 0 {
-		fmt.Fprintf(b, "+%d nodes not shown\n\n", hidden)
+	if hidden := len(funcs) - shownFuncs; hidden > 0 {
+		fmt.Fprintf(b, "%d more changed functions are not drawn; see the table.\n\n", hidden)
 	}
+}
+
+// shortName drops the package and receiver: "events.(*service).SubscribeAsync" -> "SubscribeAsync".
+func shortName(display string) string {
+	if i := strings.LastIndex(display, "."); i >= 0 {
+		return display[i+1:]
+	}
+	return display
 }
 
 func className(l risk.Level) string {
@@ -315,10 +716,13 @@ func writeCallers(b *strings.Builder, funcs []FuncRow) {
 	}
 	fmt.Fprintf(b, "<details><summary>All callers (%d)</summary>\n\n", total)
 	for _, f := range funcs {
-		if len(f.Callers) == 0 {
+		if len(f.Callers) == 0 && len(f.Registered) == 0 {
 			continue
 		}
 		fmt.Fprintf(b, "**`%s`** (%d)\n\n", f.Display, len(f.Callers))
+		for _, r := range f.Registered {
+			fmt.Fprintf(b, "- registered: `%s` — `%s:%d`\n", siteText(r), r.File, r.Line)
+		}
 		shown := f.Callers
 		if len(shown) > maxCallerList {
 			shown = shown[:maxCallerList]

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/token"
 	"path/filepath"
 	"sort"
@@ -33,6 +34,12 @@ type Program struct {
 	Files      map[string]bool // repo-relative paths of every compiled file
 	Broken     []PackageError
 	Warnings   []PackageError // packages analyzed despite non-type errors
+	// Packages are the analyzed (non-broken) packages of the module, test
+	// variants included: syntax and type information.
+	Packages []*packages.Package
+	// Generated holds the repo-relative files with a "Code generated ...
+	// DO NOT EDIT." header.
+	Generated map[string]bool
 
 	rel func(string) (string, bool)
 }
@@ -63,7 +70,7 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 	}
 
 	rel := relativizer(abs)
-	p := &Program{Dir: abs, Fset: pkgs[0].Fset, Files: map[string]bool{}, rel: rel}
+	p := &Program{Dir: abs, Fset: pkgs[0].Fset, Files: map[string]bool{}, Generated: map[string]bool{}, rel: rel}
 	for _, pkg := range pkgs {
 		if pkg.Module != nil && p.ModulePath == "" {
 			p.ModulePath = pkg.Module.Path
@@ -117,6 +124,8 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 		}
 		if isInitial[pkg] {
 			prog.CreatePackage(pkg.Types, pkg.Syntax, pkg.TypesInfo, true)
+			p.Packages = append(p.Packages, pkg)
+			markGenerated(p.Generated, pkg, rel)
 		} else {
 			prog.CreatePackage(pkg.Types, nil, nil, true)
 		}
@@ -135,6 +144,39 @@ func Load(ctx context.Context, dir string, tags []string) (*Program, error) {
 	}
 	sort.Slice(p.Warnings, func(i, j int) bool { return p.Warnings[i].PkgPath < p.Warnings[j].PkgPath })
 	return p, nil
+}
+
+// Syntax type-checks the module's non-test packages in dir (no SSA): what
+// comparing a second revision needs. Packages with errors are returned
+// too, with whatever type information go/packages produced.
+func Syntax(ctx context.Context, dir string, tags []string) ([]*packages.Package, func(string) (string, bool), error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load: %w", err)
+	}
+	cfg := &packages.Config{Context: ctx, Mode: mode, Dir: abs}
+	if len(tags) > 0 {
+		cfg.BuildFlags = []string{"-tags=" + strings.Join(tags, ",")}
+	}
+	pkgs, err := packages.Load(cfg, "./...")
+	if err != nil {
+		return nil, nil, fmt.Errorf("load: %w", err)
+	}
+	if len(pkgs) == 0 {
+		return nil, nil, errors.New("load: no packages found")
+	}
+	return pkgs, relativizer(abs), nil
+}
+
+func markGenerated(gen map[string]bool, pkg *packages.Package, rel func(string) (string, bool)) {
+	for _, f := range pkg.Syntax {
+		if !ast.IsGenerated(f) {
+			continue
+		}
+		if r, ok := rel(pkg.Fset.Position(f.Package).Filename); ok {
+			gen[r] = true
+		}
+	}
 }
 
 // typeBreakage returns a non-empty message if pkg itself failed to parse or

@@ -1,0 +1,6 @@
+# Through the bus, only svc.New (which registered Select) is a depth-2
+# caller; svc.NewOther subscribes a different handler.
+svc.(*Svc).Select: bus.(*Bus).Subscribe, svc.New
+svc.Count: main.main
+main.main:
+svc.NewOther: main.main

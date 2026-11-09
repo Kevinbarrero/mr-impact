@@ -1,4 +1,4 @@
 <!-- mrimpact:v1 -->
 couldn't analyze: build errors in `example.com/fx/calc`
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered · mrimpact v0.1.0 · 0.0 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · mrimpact v0.2.0 · 0.0 s</sub>

@@ -52,11 +52,30 @@ The note is posted only when `CI_MERGE_REQUEST_IID`, `CI_PROJECT_ID` and `CI_API
 
 `--fail-on` accepts only `""` or `red`. `--depth` must be at least 1 and `--timeout` greater than 0.
 
+## What the note shows
+
+In order, each section only when it has something:
+
+- **Removed `case`, value still exists**: a `case` removed from a switch on a named constant or type that is still declared; those values now go to `default`, or match no case.
+- **Now unused / now only used by tests**: functions the removed code used that nothing reachable from an entry point (`main`, `init`, exported API) calls or takes as a value any more, plus what only they reached. When the base revision loads, what the removed code used is resolved with its types; otherwise it is matched by package and name.
+- **Config no longer read**: struct fields with a config tag (`envconfig`, `env`, `yaml`, `mapstructure`, `toml`, `koanf`, …) the removed code used and nothing reads now: settings deployments still set for nothing.
+- **Generated code no longer used**: e.g. sqlc queries; remove them from their source and regenerate. Methods an interface of the module still requires (mocks) and protobuf messages (`*.pb.go`) are never listed.
+- **Registrations removed / rewired / added**: calls that take one of the module's functions as a value (an HTTP route, an event subscription, a hook, a CLI command), compared between base and head by call and handler. "Rewired" is the same call with another handler; "removed, no replacement" is a call that no longer gets one.
+- **Table**: every changed function with its risk, kind (`new`, `body`, `signature`; `(branch removed)` when a `case`, `if`/`else` or `return` was removed), callers up to `--depth`, where it is registered as a callback, and the coverage of its added lines (`no added lines · reached by test` / `not reached` when it only lost lines).
+- **Diagram**: the changed functions coloured by risk, with a legend; up to 3 callers each (whoever registered it as a callback first, as one dashed "registers via …" edge), the remaining direct callers as one "+N" node. The full list follows under *All callers*.
+- **Deleted functions, changed declarations, touched tests**: inline when short, otherwise counted and collapsed, grouped by package or file.
+
+Callers through a func value (an event bus, a handler table) are narrowed to the code that registered the function; callers of a closure are not counted as callers of the function that created it. An exported signature change is red only in a package other modules can import.
+
+The base revision is exported with `git archive` into a temporary directory and type-checked next to the head; the repository and its worktree are not touched.
+
 ## Limits
 
 - Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
-- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers.
+- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.
+- Now unused: uses through `reflect`, `//go:linkname`, files excluded by build tags or other repositories are not seen.
+- Registrations: only calls that take a function directly (not inside a struct literal or a slice) are compared.
 
 ## License
 

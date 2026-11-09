@@ -210,17 +210,60 @@ func TestClosureAttributedToParent(t *testing.T) {
 func TestDeclChange(t *testing.T) {
 	base := "package p\n\nimport \"os\"\n\ntype Foo struct{ A int }\n\nvar _ = os.Args\n"
 	head := "package p\n\nimport \"os\"\nimport \"io\"\n\ntype Foo struct{ A, B int }\n\nvar _ = os.Args\nvar _ io.Reader\n"
-	// HEAD: import "io" at 4, Foo at 6, new var at 9; BASE Foo (line 5) dedups with HEAD Foo.
+	// HEAD: import "io" at 4 (not reported), Foo at 6, new var at 9; BASE Foo (line 5) dedups with HEAD Foo.
 	r := run(t, []diff.FileChange{mod("p.go", []int{4, 6, 9}, []int{5})}, files{"p.go": head}, files{"p.go": base})
 	var got []string
 	for _, d := range r.Decls {
 		got = append(got, d.What)
 	}
-	if len(r.Funcs) != 0 || strings.Join(got, "|") != "import|type Foo|var _" {
+	if len(r.Funcs) != 0 || strings.Join(got, "|") != "type Foo|var _" {
 		t.Fatalf("%+v", r)
 	}
-	if r.Decls[0].Line != 4 || r.Decls[1].Line != 6 || r.Decls[2].Line != 9 {
+	if r.Decls[0].Line != 6 || r.Decls[1].Line != 9 {
 		t.Errorf("%+v", r.Decls)
+	}
+}
+
+func TestDeletedFileDeclsNotReported(t *testing.T) {
+	src := "package p\n\ntype Foo struct{}\n\nvar x = 1\n\nfunc F() {}\n"
+	ch := diff.FileChange{OldPath: "p/p.go", Status: diff.Deleted, DeletedLines: []int{1, 2, 3, 4, 5, 6, 7}}
+	r := run(t, []diff.FileChange{ch}, files{}, files{"p/p.go": src})
+	if len(r.Decls) != 0 || len(r.DeletedFiles) != 1 || r.DeletedFiles[0] != "p/p.go" {
+		t.Fatalf("Decls=%+v DeletedFiles=%v", r.Decls, r.DeletedFiles)
+	}
+}
+
+func TestDeletedRefs(t *testing.T) {
+	base := "package p\n\nimport sm \"ex.com/m/internal/status\"\n\nfunc F() int {\n\tx := helper()\n\treturn x + sm.Thing() + o.ts()\n}\n"
+	head := "package p\n\nimport sm \"ex.com/m/internal/status\"\n\nfunc F() int {\n\treturn sm.Keep()\n}\n"
+	r := run(t, []diff.FileChange{mod("p/p.go", []int{6}, []int{6, 7})}, files{"p/p.go": head}, files{"p/p.go": base})
+	for _, want := range []Ref{
+		{Dir: "p", Name: "helper"},
+		{Import: "ex.com/m/internal/status", Name: "Thing"},
+		{Dir: "p", Name: "ts"},
+	} {
+		if !r.DeletedRefs[want] {
+			t.Errorf("DeletedRefs missing %+v: %v", want, r.DeletedRefs)
+		}
+	}
+	for _, absent := range []Ref{{Dir: "p", Name: "F"}, {Dir: "p", Name: "Thing"}, {Import: "ex.com/m/internal/status", Name: "Keep"}} {
+		if r.DeletedRefs[absent] {
+			t.Errorf("DeletedRefs has %+v: %v", absent, r.DeletedRefs)
+		}
+	}
+}
+
+func TestBranchesRemoved(t *testing.T) {
+	base := "package p\n\nfunc F(m int) int {\n\tswitch m {\n\tcase 1:\n\t\treturn 1\n\tcase 2:\n\t\treturn 2\n\t}\n\treturn 0\n}\n"
+	head := "package p\n\nfunc F(m int) int {\n\tswitch m {\n\tcase 1:\n\t\treturn 1\n\t}\n\treturn 0\n}\n"
+	r := run(t, []diff.FileChange{mod("p.go", nil, []int{7, 8})}, files{"p.go": head}, files{"p.go": base})
+	if len(r.Funcs) != 1 || r.Funcs[0].Kind != Body || !r.Funcs[0].BranchesRemoved {
+		t.Fatalf("%+v", r.Funcs)
+	}
+	// Adding a branch is not a removal.
+	r = run(t, []diff.FileChange{mod("p.go", []int{7, 8}, nil)}, files{"p.go": base}, files{"p.go": head})
+	if len(r.Funcs) != 1 || r.Funcs[0].BranchesRemoved {
+		t.Fatalf("%+v", r.Funcs)
 	}
 }
 
@@ -287,5 +330,23 @@ func TestTestFilesAndParseError(t *testing.T) {
 	_, err := Find([]diff.FileChange{mod("bad.go", []int{1}, nil)}, files{"bad.go": "package {"}.src, files{"bad.go": "package p"}.src)
 	if err == nil || !strings.Contains(err.Error(), "bad.go") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRemovedCases(t *testing.T) {
+	base := "package p\n\nimport m \"ex.com/mod/model\"\n\nfunc F(x m.Mode, v any) {\n\tswitch x {\n\tcase m.A:\n\tcase m.B, Local:\n\tdefault:\n\t}\n\tswitch v.(type) {\n\tcase *m.T:\n\tcase string:\n\t}\n\tswitch y := 1; y {\n\tcase 1:\n\t}\n}\n"
+	head := "package p\n\nimport m \"ex.com/mod/model\"\n\nfunc F(x m.Mode, v any) {\n\tswitch x {\n\tcase m.A:\n\tdefault:\n\t}\n\tswitch v.(type) {\n\tcase string:\n\t}\n}\n"
+	r := run(t, []diff.FileChange{mod("p/p.go", nil, []int{8, 12, 15, 16, 17})}, files{"p/p.go": head}, files{"p/p.go": base})
+	var got []string
+	for _, c := range r.RemovedCases {
+		got = append(got, fmt.Sprintf("%s %s %+v default=%v line=%d", c.Func, c.Case, c.Ref, c.HasDefault, c.Line))
+	}
+	want := []string{
+		"p.F m.B {Dir: Import:ex.com/mod/model Name:B} default=true line=6",
+		"p.F Local {Dir:p Import: Name:Local} default=true line=6",
+		"p.F *m.T {Dir: Import:ex.com/mod/model Name:T} default=false line=10",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("RemovedCases =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
