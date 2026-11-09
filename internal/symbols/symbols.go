@@ -288,6 +288,7 @@ func load(src Source, p, keyFile string, change int, changedLines []int, refs ma
 	var fns []*fn
 	var decls []DeclChange
 	inits := 0
+	imports := fileImports(f)
 	for _, d := range f.Decls {
 		switch d := d.(type) {
 		case *ast.FuncDecl:
@@ -313,8 +314,8 @@ func load(src Source, p, keyFile string, change int, changedLines []int, refs ma
 			x.sig += "|" + signature(fset, d.Type)
 			x.text = render(fset, d)
 			x.branches = branches(d)
-			x.wiring = isWiring(d)
-			x.cases, x.switches = switchCases(fset, d, path.Dir(p), fileImports(f))
+			x.wiring = isWiring(d, imports)
+			x.cases, x.switches = switchCases(fset, d, path.Dir(p), imports)
 			fns = append(fns, x)
 		case *ast.GenDecl:
 			s, e := fset.Position(d.Pos()).Line, fset.Position(d.End()).Line

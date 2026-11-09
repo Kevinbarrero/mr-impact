@@ -13,8 +13,13 @@ import (
 // least one call or composite literal. A function literal's body is held
 // to the same rules: a closure that computes makes fd compute too, and its
 // calls and composite literals count.
-func isWiring(fd *ast.FuncDecl) bool {
-	if fd.Body == nil || len(fd.Body.List) == 0 {
+//
+// A function with a context.Context parameter (receiver excluded) is never
+// wiring: it runs per request, not once at startup. imports maps fd's
+// file's import names to paths (fileImports); a dot-imported context is
+// not resolved.
+func isWiring(fd *ast.FuncDecl, imports map[string]string) bool {
+	if fd.Body == nil || len(fd.Body.List) == 0 || takesContext(fd, imports) {
 		return false
 	}
 	w := &wiringCheck{}
@@ -24,6 +29,22 @@ func isWiring(fd *ast.FuncDecl) bool {
 		}
 	}
 	return w.built
+}
+
+func takesContext(fd *ast.FuncDecl, imports map[string]string) bool {
+	if fd.Type.Params == nil {
+		return false
+	}
+	for _, p := range fd.Type.Params.List {
+		sel, ok := p.Type.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Context" {
+			continue
+		}
+		if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "context" {
+			return true
+		}
+	}
+	return false
 }
 
 type wiringCheck struct {
