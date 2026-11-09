@@ -359,9 +359,9 @@ func entryCell(es []callgraph.Entry) string {
 	for _, e := range es[:min(2, len(es))] {
 		switch e.Kind {
 		case "api":
-			parts = append(parts, "api "+e.Display)
+			parts = append(parts, "api "+codeSpan(e.Display))
 		case "registered":
-			parts = append(parts, e.Display)
+			parts = append(parts, codeSpan(e.Display))
 		default: // main, init
 			parts = append(parts, e.Kind)
 		}

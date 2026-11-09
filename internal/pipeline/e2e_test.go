@@ -560,3 +560,27 @@ func TestRun_ConfigBaseUnreadable(t *testing.T) {
 		t.Errorf("missing %q in\n%s", line, out)
 	}
 }
+
+// A critical glob that matches no loaded package is called out in the
+// note's warnings: it is most likely a typo.
+func TestRun_CriticalGlobMatchesNothing(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "config_file")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, Critical: []string{"internal/pay/...", "internal/pyment/..."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `critical glob "internal/pyment/..." matches no package`
+	var n int
+	for _, w := range m.Warnings {
+		if strings.Contains(w, "critical glob") {
+			n++
+			if w != want {
+				t.Errorf("warning %q, want %q", w, want)
+			}
+		}
+	}
+	if n != 1 {
+		t.Errorf("warnings = %q, want exactly one critical-glob warning", m.Warnings)
+	}
+}

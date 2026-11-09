@@ -133,3 +133,12 @@ func TestChanges(t *testing.T) {
 		t.Errorf("reordered: %q", got)
 	}
 }
+
+// Critical globs are cleaned: a leading "./" and a trailing "/" are accepted.
+func TestLoad_CriticalGlobsCleaned(t *testing.T) {
+	cfg, err := Load(rootFile(t, "critical: [./internal/pay/, internal//x/..., \"a/*/\", ./b/...]\n"), "")
+	want := []string{"internal/pay", "internal/x/...", "a/*", "b/..."}
+	if err != nil || !reflect.DeepEqual(cfg.Critical, want) {
+		t.Fatalf("got %q, %v; want %q", cfg.Critical, err, want)
+	}
+}

@@ -20,7 +20,7 @@ var ErrConfig = errors.New("config")
 
 // Config is the parsed .mrimpact.yml. The zero value means defaults.
 type Config struct {
-	Critical        []string // package globs as written
+	Critical        []string // package globs, cleaned (path.Clean, no leading "./")
 	SensitiveAdd    []string // patterns added to the default sensitive table
 	SensitiveRemove []string // patterns removed from the default sensitive table
 }
@@ -62,10 +62,11 @@ func Parse(name string, r io.Reader) (Config, error) {
 	if err := dec.Decode(&raw); err != nil && !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("%w: %s: %v", ErrConfig, name, err)
 	}
-	for _, g := range raw.Critical {
+	for i, g := range raw.Critical {
 		if err := checkGlob(g); err != nil {
 			return Config{}, fmt.Errorf("%w: %s: critical %q: %v", ErrConfig, name, g, err)
 		}
+		raw.Critical[i] = cleanGlob(g)
 	}
 	return Config{
 		Critical:        raw.Critical,
@@ -109,6 +110,12 @@ func missing(a, b []string) []string {
 		}
 	}
 	return out
+}
+
+// cleanGlob is path.Clean without a leading "./": "./internal/x/" reads as
+// "internal/x".
+func cleanGlob(g string) string {
+	return strings.TrimPrefix(path.Clean(g), "./")
 }
 
 // checkGlob validates every path segment with path.Match after stripping a

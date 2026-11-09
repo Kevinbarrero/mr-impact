@@ -4,11 +4,11 @@
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
-| 🔴 | `grade.Report` | body | 1 | api grade.Card, api grade.Report | 0 % (0/2) |
-| 🟡 | `grade.Bonus` | new | 0 | api grade.Bonus | 80 % (4/5) |
-| 🟡 | `grade.Card` | new | 0 | api grade.Card | 0 % (0/3) |
-| 🟡 | `grade.Unused` | new | 0 | api grade.Unused | 0 % (0/2) |
-| 🟢 | `grade.Letter` | body | 2 | api grade.Card, api grade.Letter +1 | 100 % (3/3) |
+| 🔴 | `grade.Report` | body | 1 | api `grade.Card`, api `grade.Report` | 0 % (0/2) |
+| 🟡 | `grade.Bonus` | new | 0 | api `grade.Bonus` | 80 % (4/5) |
+| 🟡 | `grade.Card` | new | 0 | api `grade.Card` | 0 % (0/3) |
+| 🟡 | `grade.Unused` | new | 0 | api `grade.Unused` | 0 % (0/2) |
+| 🟢 | `grade.Letter` | body | 2 | api `grade.Card`, api `grade.Letter` +1 | 100 % (3/3) |
 
 🧪 Tests touched in this MR: `grade/grade_test.go`
 

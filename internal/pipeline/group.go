@@ -164,6 +164,9 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		row.Level = risk.Red // covered members never launder an untested entry
 	}
 	row.Kind = fmt.Sprintf("new · +%d", len(members))
+	if entry.In.Sensitive {
+		row.Kind += " · sensitive"
+	}
 	row.CoverText = coverText(in.HasProfile, in.Covered, in.Total, true, in.TestReached, crossPkgs, mod)
 	if untested > 0 {
 		row.CoverText += fmt.Sprintf(" · %d untested", untested)
