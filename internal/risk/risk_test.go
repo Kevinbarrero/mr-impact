@@ -225,3 +225,22 @@ func TestAssess_SensitiveNoAddedLines(t *testing.T) {
 		t.Fatalf("got %v, want Green", got)
 	}
 }
+
+func TestAssess_SensitiveProfileNoAddedLinesKeepsTodaysRating(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Input
+		want Level
+	}{
+		{"no callers", Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Total: 0}, Yellow},
+		{"callers, wiring", Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Total: 0, NonTestCallers: 2, Wiring: true}, Yellow},
+		{"callers", Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Total: 0, NonTestCallers: 2}, Red},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Assess(tt.in); got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
