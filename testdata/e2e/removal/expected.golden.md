@@ -1,6 +1,6 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 4 functions changed
-**🔴 1 · 🟡 2 · 🟢 1** · coverage: `static` · base `0000000`
+**🔴 0 · 🟡 3 · 🟢 1** · coverage: `static` · base `0000000`
 
 ↪️ **Removed `case`, value still exists** — these values now take another path (1):
 
@@ -29,10 +29,10 @@
 
 | Risk | Function | Change | Callers | Registered | Added-line coverage |
 |---|---|---|---|---|---|
-| 🔴 | `svc.NewOther` | body | 1 |  | not reached |
 | 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | reached by test |
-| 🟡 | `main.main` | body | 0 |  | not reached |
-| 🟢 | `svc.Count` | signature (exported) | 1 |  | reached by test |
+| 🟡 | `svc.NewOther` | body · wiring | 1 |  | not reached |
+| 🟡 | `main.main` | body · wiring | 0 |  | not reached |
+| 🟢 | `svc.Count` | signature (exported) · wiring | 1 |  | reached by test |
 
 ➖ Deleted: `svc.onHedge`, `svc.hedge`, `svc.Admin`
 
@@ -42,13 +42,13 @@
 
 ```mermaid
 flowchart RL
-  n0["🔴 svc.NewOther"]:::red
-  n1["🟡 svc.(*Svc).Select"]:::yellow
-  n2["svc.New"]
+  n0["🟡 svc.(*Svc).Select"]:::yellow
+  n1["svc.New"]
+  n2["🟡 svc.NewOther"]:::yellow
   n3["🟡 main.main"]:::yellow
   n4["🟢 svc.Count"]:::green
-  n2 -. "registers via Subscribe" .-> n1
-  n3 --> n0
+  n1 -. "registers via Subscribe" .-> n0
+  n3 --> n2
   n3 --> n4
   subgraph legend ["Legend"]
     direction LR
@@ -64,15 +64,15 @@ flowchart RL
 
 <details><summary>All callers (4)</summary>
 
-**`svc.NewOther`** (1)
-
-- depth 1: `main.main`
-
 **`svc.(*Svc).Select`** (2)
 
 - registered: `Subscribe("select", …)` — `internal/svc/svc.go:11`
 - depth 1: `bus.(*Bus).Subscribe`
 - depth 2: `svc.New`
+
+**`svc.NewOther`** (1)
+
+- depth 1: `main.main`
 
 **`svc.Count`** (1)
 

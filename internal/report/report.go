@@ -81,6 +81,7 @@ type Model struct {
 	Coverage             string // "coverprofile" | "static"
 	BaseSHA              string // rendered as first 7 chars
 	Degraded             bool
+	CrossPkgOnly         int    // functions covered only by tests in other packages: renders the coverpkg hint
 	Failure              string // non-empty: only marker + failure line + footer
 	NoGoChanges          bool   // marker + "No Go code changes" + footer
 	Version              string
@@ -122,6 +123,9 @@ func Render(m Model) string {
 	}
 	b.WriteString("\n\n")
 
+	if m.CrossPkgOnly > 0 {
+		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
+	}
 	writeRemovedCases(&b, m.RemovedCases)
 	writeUnused(&b, m.Unused)
 	writeConfig(&b, m.UnusedConfig)

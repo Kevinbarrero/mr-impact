@@ -243,28 +243,20 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
 			BranchesRemoved: f.BranchesRemoved,
 		}
-		var cover string
-		switch {
-		case prof != nil:
+		var cross []string
+		if prof != nil {
 			in.HasProfile = true
 			in.Covered, in.Total = prof.Lines(f.File, f.AddedLines)
-			switch {
-			case in.Total > 0:
-				cover = fmt.Sprintf("%d %% (%d/%d)", in.Covered*100/in.Total, in.Covered, in.Total)
-			case graph == nil:
-				cover = "no added lines"
-			case im.TestReached:
-				cover = "no added lines · reached by test"
-			default:
-				cover = "no added lines · not reached"
+			if in.Total > 0 && in.Covered == 0 {
+				cross = crossPkgTests(pkgPathOf(prog.ModulePath, f.File), im.TestPkgs)
 			}
-		case graph == nil:
-			cover = "n/a"
-		case im.TestReached:
-			cover = "reached by test"
-		default:
-			cover = "not reached"
+			if len(cross) > 0 {
+				in.CrossPkgTestReached = true
+				m.CrossPkgOnly++
+			}
 		}
+		in.Wiring = f.Wiring
+		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
 		m.Funcs = append(m.Funcs, report.FuncRow{
 			Level: risk.Assess(in), Display: f.Display, Kind: kindText(f),
 			Callers: im.Callers, CoverText: cover, Registered: im.Registered,
@@ -520,6 +512,9 @@ func kindText(f symbols.ChangedFunc) string {
 	}
 	if f.BranchesRemoved {
 		k += " (branch removed)"
+	}
+	if f.Wiring {
+		k += " · wiring"
 	}
 	return k
 }
