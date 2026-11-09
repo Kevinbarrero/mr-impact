@@ -46,10 +46,14 @@ type Input struct {
 	// Wiring: the function is straight-line setup; its rating is capped at
 	// yellow (except an exported signature change in an importable package).
 	Wiring bool
+	// Sensitive: the function touches a sensitive API or a critical path.
+	// Untested sensitive code is red whatever its callers, wiring or
+	// cross-package reach.
+	Sensitive bool
 }
 
 // Legend explains the rating in the report footer.
-const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡"
+const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 
 // Assess rates a changed function. It must not be called for symbols.Deleted,
 // which has no code left to rate; doing so panics.
@@ -59,6 +63,9 @@ func Assess(in Input) Level {
 	}
 
 	var untested, partial bool
+	// sensitiveUntested ignores cross-package reach on purpose.
+	sensitiveUntested := in.Sensitive &&
+		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!(in.HasProfile && in.Total > 0) && !in.TestReached))
 	if in.HasProfile && in.Total > 0 {
 		untested = in.Covered == 0
 		partial = in.Covered > 0 && in.Covered < in.Total
@@ -72,6 +79,8 @@ func Assess(in Input) Level {
 	switch {
 	case in.Exported && in.Kind == symbols.Signature && in.Importable:
 		return Red // never capped by Wiring
+	case sensitiveUntested:
+		return Red // not capped by Wiring, not softened by cross-package reach
 	case untested && in.NonTestCallers >= 1:
 		if in.Wiring {
 			return Yellow
