@@ -172,6 +172,25 @@ func TestGroup_RedMemberIsNotFolded(t *testing.T) {
 	}
 }
 
+// A group is never rated below its entry's own red: covered members do not
+// launder an untested entry.
+func TestGroup_RedEntryStaysRed(t *testing.T) {
+	a := rf("p.A", 0, 4, "p.Old")
+	if a.Row.Level != risk.Red {
+		t.Fatalf("p.A alone = %v, want red", a.Row.Level)
+	}
+	rows, folded, groups := group([]ratedFunc{a, rf("p.h", 10, 10, "p.A")}, "m")
+	if len(rows) != 1 || folded != 1 || groups != 1 {
+		t.Fatalf("rows = %v, folded = %d, groups = %d", displays(rows), folded, groups)
+	}
+	if got := displays(rows[0].Members); !reflect.DeepEqual(got, []string{"p.h"}) {
+		t.Errorf("members = %v, want [p.h]", got)
+	}
+	if rows[0].Level != risk.Red {
+		t.Errorf("group level = %v, want red", rows[0].Level)
+	}
+}
+
 // A red function claims the members it reaches, like any entry.
 func TestGroup_RedFunctionIsEntry(t *testing.T) {
 	a := rf("p.A", 10, 10, "p.Old")
@@ -227,7 +246,11 @@ func TestGroup_NoProfileReachedByAny(t *testing.T) {
 }
 
 func TestGroup_CrossPkgOnSums(t *testing.T) {
+	// A is wiring, so yellow alone (not a red entry); the group is not all
+	// wiring, so only the cross-package reach on the sums makes it yellow.
 	a := rf("p.A", 0, 3, "p.Old")
+	a.In.Wiring = true
+	a = reassess(a)
 	h := rf("p.h", 0, 2, "p.A")
 	h.In.CrossPkgTestReached = true
 	h.CrossPkgs = []string{"m/q"}

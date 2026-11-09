@@ -130,6 +130,7 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 }
 
 // groupRow is the entry's row with the figures summed over entry and members.
+// Its rating is never below the entry's own when that is red.
 func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report.FuncRow {
 	in := entry.In
 	cross := entry.In.CrossPkgTestReached
@@ -157,6 +158,9 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		crossPkgs = sortedUnique(crossPkgs)
 	}
 	row.Level = risk.Assess(in)
+	if entry.Row.Level == risk.Red {
+		row.Level = risk.Red // covered members never launder an untested entry
+	}
 	row.Kind = fmt.Sprintf("new · +%d", len(members))
 	row.CoverText = coverText(in.HasProfile, in.Covered, in.Total, true, in.TestReached, crossPkgs, mod)
 	if untested > 0 {
