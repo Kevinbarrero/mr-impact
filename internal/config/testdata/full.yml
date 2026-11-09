@@ -1,0 +1,8 @@
+critical:                 # package globs; functions in matching packages are sensitive
+  - internal/payment/...  # module-relative, or a full import path
+sensitive:
+  add:                    # patterns added to the default table
+    - github.com/shopspring/decimal.*
+    - example.com/ledger.(*Ledger).Post
+  remove:                 # patterns removed from the default table, matched textually
+    - reflect.*
