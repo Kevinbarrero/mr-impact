@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -330,5 +331,26 @@ func TestDead(t *testing.T) {
 	want := "dead.lost, dead.helper via dead.lost, dead.testOnly (tests), dead.t.gone"
 	if strings.Join(got, ", ") != want {
 		t.Errorf("Dead = %s\nwant   %s", strings.Join(got, ", "), want)
+	}
+}
+
+func TestImpact_TestPkgs(t *testing.T) {
+	const dir = "testdata/testpkgs"
+	p, err := load.Load(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := Build(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	im := g.Impact("a/a.go", lineOf(t, dir, "a/a.go", "func A()"), 2)
+	want := []string{"example.com/tp/a", "example.com/tp/a_test", "example.com/tp/b"}
+	if !im.TestReached || !reflect.DeepEqual(im.TestPkgs, want) {
+		t.Errorf("TestPkgs = %v (reached %v), want %v", im.TestPkgs, im.TestReached, want)
+	}
+	im = g.Impact("a/a.go", lineOf(t, dir, "a/a.go", "func Lonely"), 2)
+	if !im.Found || im.TestPkgs != nil {
+		t.Errorf("Lonely: found=%v TestPkgs=%v, want found and nil", im.Found, im.TestPkgs)
 	}
 }

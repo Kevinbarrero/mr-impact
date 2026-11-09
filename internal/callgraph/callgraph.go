@@ -44,6 +44,7 @@ type Impact struct {
 	Callers     []Caller // non-test callers up to depth, nearest depth first then Display; deduped by function
 	TestCallers int      // distinct test funcs among callers up to depth
 	TestReached bool     // some Test/Benchmark/Fuzz/Example func in a _test.go file reaches it (unbounded depth)
+	TestPkgs    []string // sorted, distinct packages of the test entries that reach it (unbounded depth); nil if none
 	Registered  []Site   // non-test places that take the function as a value (callback registration), by File then Line
 }
 
@@ -511,6 +512,7 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		frontier = next
 	}
 
+	pkgs := map[string]bool{}
 	for id, d := range depthOf {
 		n := g.nodes[id]
 		if id == target {
@@ -518,6 +520,7 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		}
 		if n.testEntry {
 			im.TestReached = true
+			pkgs[n.pkg] = true
 		}
 		if d > depth {
 			continue
@@ -529,6 +532,10 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 			im.Callers = append(im.Callers, Caller{Display: n.display, Pkg: n.pkg, Depth: d, Via: via[id], Kind: kindOf[id]})
 		}
 	}
+	for p := range pkgs {
+		im.TestPkgs = append(im.TestPkgs, p)
+	}
+	sort.Strings(im.TestPkgs)
 	sort.Slice(im.Callers, func(i, j int) bool {
 		a, b := im.Callers[i], im.Callers[j]
 		if a.Depth != b.Depth {
