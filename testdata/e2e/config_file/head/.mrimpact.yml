@@ -3,4 +3,4 @@ critical:
   - internal/pay/...
 sensitive:
   remove:
-    - reflect.*
+    - os/exec.*

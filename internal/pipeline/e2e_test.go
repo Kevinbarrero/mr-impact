@@ -150,8 +150,8 @@ func checkConfigFile(t *testing.T, m report.Model) {
 	if s, ok := sensitiveOf(m, "pay.Settle"); !ok || s.Critical != "internal/pay/..." || len(s.APIs) != 0 {
 		t.Errorf("pay.Settle section row = %+v, %v", s, ok)
 	}
-	if _, ok := sensitiveOf(m, "describe.Name"); ok || strings.Contains(rowOf(t, m, "describe.Name").Kind, "sensitive") {
-		t.Error("describe.Name calls only reflect, which the config removed: must not be sensitive")
+	if _, ok := sensitiveOf(m, "describe.Tool"); ok || strings.Contains(rowOf(t, m, "describe.Tool").Kind, "sensitive") {
+		t.Error("describe.Tool calls only os/exec, which the config removed: must not be sensitive")
 	}
 }
 
@@ -462,6 +462,59 @@ func TestRun_DegradedStillSensitive(t *testing.T) {
 	for _, r := range m.Funcs {
 		if len(r.Entries) > 0 {
 			t.Errorf("row %s has entries %+v", r.Display, r.Entries)
+		}
+	}
+}
+
+// main and init touching sensitive APIs are listed under 🔐 but keep
+// today's rating: the untested-sensitive rule does not apply to them.
+func TestRun_SensitiveRootExempt(t *testing.T) {
+	write := func(dir, name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base, head := t.TempDir(), t.TempDir()
+	for _, d := range []string{base, head} {
+		write(d, "go.mod", "module example.com/root\n\ngo 1.26\n")
+	}
+	write(base, "main.go", "package main\n\nfunc init() {}\n\nfunc main() {}\n")
+	write(head, "main.go", `package main
+
+import (
+	"os"
+	"os/exec"
+)
+
+func init() {
+	for _, a := range os.Args[1:] {
+		_ = os.Remove(a)
+	}
+}
+
+func main() {
+	if len(os.Args) > 1 {
+		_ = exec.Command(os.Args[1]).Run()
+	}
+}
+`)
+	repo, baseSHA, _ := testutil.MakeRepo(t, base, head)
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"main.main", "main.init"} {
+		s, ok := sensitiveOf(m, d)
+		if !ok {
+			t.Errorf("%s not listed under 🔐", d)
+			continue
+		}
+		if s.Untested {
+			t.Errorf("%s: untested-sensitive rule applied", d)
+		}
+		if r := rowOf(t, m, d); r.Level != risk.Yellow || strings.Contains(r.Kind, "wiring") {
+			t.Errorf("%s = %v, want yellow, not wiring (today's rule: untested, no callers)", d, r.Level)
 		}
 	}
 }

@@ -277,6 +277,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		var apis []string
 		critical := ""
 		if fd, info, declPkg, ok := prog.FuncDecl(f.File, f.StartLine); ok {
+			in.Root = fd.Recv == nil && (fd.Name.Name == "init" || (fd.Name.Name == "main" && pkgName == "main"))
 			apis = table.Calls(fd, info)
 			if g, ok := sensitive.Critical(declPkg, prog.ModulePath, cfg.Critical); ok {
 				critical = g

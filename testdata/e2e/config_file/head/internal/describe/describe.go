@@ -1,8 +1,11 @@
 package describe
 
-import "reflect"
+import "os/exec"
 
-// Name names v's type, with its package.
-func Name(v any) string {
-	return reflect.TypeOf(v).String()
+// Tool finds the named tool on PATH, or returns the name unchanged.
+func Tool(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return name
 }

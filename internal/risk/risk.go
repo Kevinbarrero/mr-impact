@@ -47,8 +47,8 @@ type Input struct {
 	// yellow (except an exported signature change in an importable package).
 	Wiring bool
 	// Sensitive: the function touches a sensitive API or a critical path.
-	// Untested sensitive code is red whatever its callers, wiring or
-	// cross-package reach.
+	// Untested sensitive code is red whatever its callers or cross-package
+	// reach (not for main, init or wiring).
 	Sensitive bool
 	// AddedLines: the number of lines the MR added to the function. The
 	// untested-sensitive rule needs some.
@@ -56,6 +56,8 @@ type Input struct {
 	// ReachUnknown: no call graph, so TestReached is not known. Without a
 	// profile the untested-sensitive rule then does not fire.
 	ReachUnknown bool
+	// Root: main of package main, or an init function.
+	Root bool
 }
 
 // Legend explains the rating in the report footer.
@@ -63,10 +65,11 @@ const Legend = "🔴 untested with callers, or exported signature changed in an 
 
 // SensitiveUntested reports the untested-sensitive rule: a sensitive
 // function with added lines that are 0/N (N > 0) with a profile, or that no
-// test reaches without one (when the call graph tells). It ignores
-// cross-package reach on purpose.
+// test reaches without one (when the call graph tells). main, init and
+// wiring functions are exempt: they keep today's rules (wiring stays capped).
+// It ignores cross-package reach on purpose.
 func (in Input) SensitiveUntested() bool {
-	if !in.Sensitive || in.AddedLines == 0 {
+	if !in.Sensitive || in.AddedLines == 0 || in.Root || in.Wiring {
 		return false
 	}
 	if in.HasProfile {
@@ -98,7 +101,7 @@ func Assess(in Input) Level {
 	case in.Exported && in.Kind == symbols.Signature && in.Importable:
 		return Red // never capped by Wiring
 	case sensitiveUntested:
-		return Red // not capped by Wiring, not softened by cross-package reach
+		return Red // not softened by cross-package reach
 	case untested && in.NonTestCallers >= 1:
 		if in.Wiring {
 			return Yellow
