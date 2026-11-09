@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		Dir: *dir, Base: *base, Head: *head, Depth: *depth,
 		CoverProfiles: profiles, Timeout: *timeout,
 		Sensitive: &table, Critical: fileCfg.Critical,
+		File: &fileCfg, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml",
+	}
+	if *configPath != "" {
+		cfg.FileName, cfg.FileRel = *configPath, repoRel(*dir, *configPath)
 	}
 	for _, t := range strings.Split(*tags, ",") {
 		if t = strings.TrimSpace(t); t != "" {
@@ -149,4 +154,19 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		}
 	}
 	return 0
+}
+
+// repoRel returns p relative to the repository root dir, slash-separated, or
+// "" when p lies outside it (it then has no base version to compare).
+func repoRel(dir, p string) string {
+	absDir, err1 := filepath.Abs(dir)
+	absP, err2 := filepath.Abs(p)
+	if err1 != nil || err2 != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(absDir, absP)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }

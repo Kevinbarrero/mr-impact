@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -50,16 +51,20 @@ func Load(moduleRoot, explicitPath string) (Config, error) {
 		return Config{}, fmt.Errorf("%w: %v", ErrConfig, err)
 	}
 	defer f.Close()
+	return Parse(p, f)
+}
 
+// Parse parses a config file's content; name labels its errors.
+func Parse(name string, r io.Reader) (Config, error) {
 	var raw fileShape
-	dec := yaml.NewDecoder(f)
+	dec := yaml.NewDecoder(r)
 	dec.KnownFields(true)
 	if err := dec.Decode(&raw); err != nil && !errors.Is(err, io.EOF) {
-		return Config{}, fmt.Errorf("%w: %s: %v", ErrConfig, p, err)
+		return Config{}, fmt.Errorf("%w: %s: %v", ErrConfig, name, err)
 	}
 	for _, g := range raw.Critical {
 		if err := checkGlob(g); err != nil {
-			return Config{}, fmt.Errorf("%w: %s: critical %q: %v", ErrConfig, p, g, err)
+			return Config{}, fmt.Errorf("%w: %s: critical %q: %v", ErrConfig, name, g, err)
 		}
 	}
 	return Config{
@@ -67,6 +72,43 @@ func Load(moduleRoot, explicitPath string) (Config, error) {
 		SensitiveAdd:    raw.Sensitive.Add,
 		SensitiveRemove: raw.Sensitive.Remove,
 	}, nil
+}
+
+// Change is one difference between two configs: What the MR does ("adds
+// critical", "removes from defaults", …) to Items, in head (or base) order.
+type Change struct {
+	What  string
+	Items []string
+}
+
+// Changes lists what head changes relative to base, per key: critical
+// added/dropped, sensitive.remove added/dropped, sensitive.add added/dropped.
+// Order within a key and duplicates do not count. nil when equal.
+func Changes(base, head Config) []Change {
+	var out []Change
+	pair := func(b, h []string, added, dropped string) {
+		if d := missing(h, b); len(d) > 0 {
+			out = append(out, Change{added, d})
+		}
+		if d := missing(b, h); len(d) > 0 {
+			out = append(out, Change{dropped, d})
+		}
+	}
+	pair(base.Critical, head.Critical, "adds critical", "drops critical")
+	pair(base.SensitiveRemove, head.SensitiveRemove, "removes from defaults", "restores defaults")
+	pair(base.SensitiveAdd, head.SensitiveAdd, "adds", "drops added")
+	return out
+}
+
+// missing returns the distinct entries of a not in b, in a's order.
+func missing(a, b []string) []string {
+	var out []string
+	for _, s := range a {
+		if !slices.Contains(b, s) && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // checkGlob validates every path segment with path.Match after stripping a

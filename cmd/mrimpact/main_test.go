@@ -285,9 +285,26 @@ func TestRun_ConfigReadFromDir(t *testing.T) {
 	for _, want := range []string{
 		"| 🔴 | `pay.Settle` | body · sensitive |",
 		"- 🔴 `pay.Settle` — critical: internal/pay/... · ",
+		"⚙️ .mrimpact.yml: critical `internal/pay/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`)",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s", want, stdout)
 		}
+	}
+}
+
+// --config naming a file inside the repo is compared with its base version
+// too, and the line names it as given.
+func TestRun_ExplicitConfigInRepoCompared(t *testing.T) {
+	repo, base := fixture(t, "config_file")
+	out := filepath.Join(t.TempDir(), "r.md")
+	cfg := filepath.Join(repo, ".mrimpact.yml")
+	code, stdout, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--config", cfg, "--out", out)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	want := "⚙️ " + cfg + ": critical `internal/pay/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`)"
+	if !strings.Contains(stdout, want) {
+		t.Errorf("missing %q in\n%s", want, stdout)
 	}
 }

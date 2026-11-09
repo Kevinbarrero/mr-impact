@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
 )
@@ -442,5 +443,46 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
+	}
+}
+
+func TestRender_ConfigLine(t *testing.T) {
+	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a"}}}
+	cases := []struct {
+		name string
+		cfg  *ConfigNote
+		want string // "" = no config line
+	}{
+		{"none", nil, ""},
+		{"settings", &ConfigNote{File: ".mrimpact.yml", Critical: []string{"internal/pay/...", "x/*"}, Removes: []string{"os/exec.*"}, Adds: []string{"l.(*L).Post"}},
+			"⚙️ .mrimpact.yml: critical `internal/pay/...`, `x/*` · removes `os/exec.*` · adds `l.(*L).Post`"},
+		{"critical only", &ConfigNote{File: ".mrimpact.yml", Critical: []string{"a/..."}},
+			"⚙️ .mrimpact.yml: critical `a/...`"},
+		{"changed", &ConfigNote{File: ".mrimpact.yml", Critical: []string{"a/..."}, Removes: []string{"os/exec.*"}, Changed: true,
+			Changes: []config.Change{{What: "removes from defaults", Items: []string{"os/exec.*"}}, {What: "drops critical", Items: []string{"b"}}}},
+			"⚙️ .mrimpact.yml: critical `a/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`; MR drops critical: `b`)"},
+		{"changed to defaults", &ConfigNote{File: ".mrimpact.yml", Changed: true,
+			Changes: []config.Change{{What: "drops critical", Items: []string{"b"}}}},
+			"⚙️ .mrimpact.yml: defaults — changed in this MR (MR drops critical: `b`)"},
+		{"base unreadable", &ConfigNote{File: ".mrimpact.yml", Removes: []string{"os/exec.*"}, Changed: true, BaseUnreadable: true},
+			"⚙️ .mrimpact.yml: removes `os/exec.*` — changed in this MR (base config unreadable)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := base
+			m.Config = c.cfg
+			out := Render(m)
+			if c.want == "" {
+				if strings.Contains(out, "⚙️") {
+					t.Errorf("unexpected config line:\n%s", out)
+				}
+				return
+			}
+			// One line right after the header block.
+			if !strings.Contains(out, "base `abcdef0`\n\n"+c.want+"\n\n") {
+				t.Errorf("want line %q after the header in\n%s", c.want, out)
+			}
+		})
 	}
 }
