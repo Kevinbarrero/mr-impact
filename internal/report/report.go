@@ -287,8 +287,18 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 	if withEntries {
 		head, sep = head+" Entry points |", sep+"---|"
 	}
+	var common []callgraph.Entry
+	if withEntries {
+		common = commonEntries(funcs[:min(maxTableRows, len(funcs))])
+	}
+	if len(common) > 0 {
+		parts := make([]string, len(common))
+		for i, e := range common {
+			parts[i] = entryText(e)
+		}
+		b.WriteString("All changes shown are reached from: " + strings.Join(parts, ", ") + "\n\n")
+	}
 	b.WriteString(head + " Added-line coverage |\n" + sep + "---|\n")
-	dropMain := withEntries && allReachMain(funcs[:min(maxTableRows, len(funcs))])
 	for i, f := range funcs {
 		if i == maxTableRows {
 			break
@@ -298,11 +308,7 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 			b.WriteString(registeredCell(f.Registered) + " | ")
 		}
 		if withEntries {
-			es := f.Entries
-			if dropMain {
-				es = withoutMain(es)
-			}
-			b.WriteString(entryCell(es) + " | ")
+			b.WriteString(entryCell(without(f.Entries, common)) + " | ")
 		}
 		fmt.Fprintf(b, "%s |\n", cell(f.CoverText))
 	}
@@ -329,25 +335,55 @@ func writeMembers(b *strings.Builder, funcs []FuncRow) {
 	}
 }
 
-// allReachMain reports whether every row's entry points include main: then
-// main tells the rows apart in no way and the cells leave it out.
-func allReachMain(rows []FuncRow) bool {
-	for _, f := range rows {
-		if !slices.ContainsFunc(f.Entries, func(e callgraph.Entry) bool { return e.Kind == "main" }) {
-			return false
-		}
+// commonEntries returns the entry points every row has, in the first row's
+// (the cells') order: they tell the rows apart in no way, so the table states
+// them once above it and the cells leave them out. With fewer than two rows
+// nothing is common.
+func commonEntries(rows []FuncRow) []callgraph.Entry {
+	if len(rows) < 2 {
+		return nil
 	}
-	return len(rows) > 0
-}
-
-func withoutMain(es []callgraph.Entry) []callgraph.Entry {
 	var out []callgraph.Entry
-	for _, e := range es {
-		if e.Kind != "main" {
+	for _, e := range rows[0].Entries {
+		shared := true
+		for _, f := range rows[1:] {
+			if !slices.Contains(f.Entries, e) {
+				shared = false
+				break
+			}
+		}
+		if shared && !slices.Contains(out, e) {
 			out = append(out, e)
 		}
 	}
 	return out
+}
+
+// without returns es minus the entries in drop.
+func without(es, drop []callgraph.Entry) []callgraph.Entry {
+	if len(drop) == 0 {
+		return es
+	}
+	var out []callgraph.Entry
+	for _, e := range es {
+		if !slices.Contains(drop, e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// entryText renders one entry point: a registration and an api function as
+// code spans, main and init by kind.
+func entryText(e callgraph.Entry) string {
+	switch e.Kind {
+	case "api":
+		return "api " + codeSpan(e.Display)
+	case "registered":
+		return codeSpan(e.Display)
+	default: // main, init
+		return e.Kind
+	}
 }
 
 // entryCell shows the first two entry points and how many more, or a dash.
@@ -357,14 +393,7 @@ func entryCell(es []callgraph.Entry) string {
 	}
 	var parts []string
 	for _, e := range es[:min(2, len(es))] {
-		switch e.Kind {
-		case "api":
-			parts = append(parts, "api "+codeSpan(e.Display))
-		case "registered":
-			parts = append(parts, codeSpan(e.Display))
-		default: // main, init
-			parts = append(parts, e.Kind)
-		}
+		parts = append(parts, entryText(e))
 	}
 	out := cell(strings.Join(parts, ", "))
 	if len(es) > 2 {
