@@ -17,7 +17,7 @@ The note says *who calls* a changed function and *whether it is tested*. It does
 ## 2. Constraints
 
 - **Zero-config by default.** mrimpact must be fully useful with no config file and no new flag. The built-in defaults drive every feature here. The config file only *adds* project knowledge, such as critical packages and extra sensitive APIs, or *removes* a default. A missing file is the normal case and is never a warning.
-- **General Go.** The default sensitive table lists only standard-library or universally known APIs. Detection uses type-checked objects (package path + name), never import strings or project names.
+- **General Go.** The default sensitive table lists only standard-library or universally known APIs (the data-access / crypto row: pgx, sqlx, gorm, golang.org/x/crypto; routers such as gin, echo or chi stay out). Detection uses type-checked objects (package path + name), never import strings or project names.
 - **Deterministic and offline.** No network, AI service, API key or token.
 - **Unchanged CLI contract**, with one addition: an optional `--config <path>`. Exit codes, `--fail-on red` and posting are unchanged.
 - **One new dependency:** `gopkg.in/yaml.v3`, used only to read the optional file.
@@ -45,6 +45,7 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
 | Crypto / TLS | `crypto/...` (every package under `crypto`), `crypto/tls.Config` (composite literal counts) |
 | SQL | `database/sql.(*DB).*`, `database/sql.(*Tx).*`, `database/sql.(*Conn).*`, `database/sql.(*Stmt).*` |
 | HTTP | `net/http.ListenAndServe`, `net/http.ListenAndServeTLS`, `net/http.(*Server).*`, `net/http.(*Client).*`, `net/http.Get`, `net/http.Post`, `net/http.PostForm`, `net/http.Head`, `net/http.Handle`, `net/http.HandleFunc` |
+| Data access / crypto libraries | `github.com/jackc/pgx/v5.(*Conn).*`, `github.com/jackc/pgx/v5.(Tx).*`, `github.com/jackc/pgx/v5/pgxpool.(*Pool).*`, `github.com/jackc/pgx/v5/pgxpool.(*Conn).*`, `github.com/jackc/pgx/v5/pgxpool.(*Tx).*`, the same for `github.com/jackc/pgx/v4`, `github.com/jmoiron/sqlx.(*DB).*`, `github.com/jmoiron/sqlx.(*Tx).*`, `gorm.io/gorm.(*DB).*`, `golang.org/x/crypto/...` |
 | Deserialization / templates | `encoding/gob.*`, `encoding/xml.(*Decoder).*`, `encoding/xml.Unmarshal`, `text/template.(*Template).Execute*`, `html/template.(*Template).Execute*` |
 
 `crypto/...` and the `.../` form match the package and every package below it. A composite literal of a matched type (e.g. `tls.Config{…}`) counts as touching it.

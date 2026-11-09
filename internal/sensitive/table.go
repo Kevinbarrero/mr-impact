@@ -1,6 +1,7 @@
 // Package sensitive finds the sensitive APIs a function touches: the default
-// table of standard-library patterns, plus the config's additions and
-// removals, matched against type-resolved callees.
+// table (standard-library patterns and a few common data-access and crypto
+// libraries), plus the config's additions and removals, matched against
+// type-resolved callees.
 package sensitive
 
 import (
@@ -35,6 +36,15 @@ var defaultPatterns = []string{
 	"net/http.ListenAndServe", "net/http.ListenAndServeTLS", "net/http.(*Server).*", "net/http.(*Client).*",
 	"net/http.Get", "net/http.Post", "net/http.PostForm", "net/http.Head", "net/http.Handle",
 	"net/http.HandleFunc",
+	// Data access / crypto libraries (the common ones; matched by import path,
+	// so a module that does not use them is unaffected)
+	"github.com/jackc/pgx/v5.(*Conn).*", "github.com/jackc/pgx/v5.(Tx).*",
+	"github.com/jackc/pgx/v5/pgxpool.(*Pool).*", "github.com/jackc/pgx/v5/pgxpool.(*Conn).*", "github.com/jackc/pgx/v5/pgxpool.(*Tx).*",
+	"github.com/jackc/pgx/v4.(*Conn).*", "github.com/jackc/pgx/v4.(Tx).*",
+	"github.com/jackc/pgx/v4/pgxpool.(*Pool).*", "github.com/jackc/pgx/v4/pgxpool.(*Conn).*", "github.com/jackc/pgx/v4/pgxpool.(*Tx).*",
+	"github.com/jmoiron/sqlx.(*DB).*", "github.com/jmoiron/sqlx.(*Tx).*",
+	"gorm.io/gorm.(*DB).*",
+	"golang.org/x/crypto/...",
 	// Deserialization / templates
 	"encoding/gob.*", "encoding/xml.(*Decoder).*", "encoding/xml.Unmarshal",
 	"text/template.(*Template).Execute*", "html/template.(*Template).Execute*",

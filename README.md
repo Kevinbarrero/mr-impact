@@ -34,7 +34,7 @@ sensitive:
 - Patterns: `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M`; `*` in the method position matches any method, a trailing `*` a prefix (`Execute*`); `pkgpath/...` matches the package and every package below it. Callees are matched by their type-checked package path and name, so aliased imports and methods called through the type are found.
 - Parsing is strict. An unknown key, a wrong type, a bad glob, a malformed pattern, a `remove` entry that is not in the default table, or `--config` naming a missing file is a usage error: one line `mrimpact: config: …` on stderr, exit 2, and no note is written or posted.
 
-Default sensitive table (standard library only):
+Default sensitive table (the standard library, plus a few common data-access and crypto libraries, matched by import path; routers such as gin, echo or chi are not in it):
 
 | Area | Patterns |
 |---|---|
@@ -44,6 +44,7 @@ Default sensitive table (standard library only):
 | Crypto / TLS | `crypto/...`, `crypto/tls.Config` (a composite literal counts) |
 | SQL | `database/sql.(*DB).*`, `database/sql.(*Tx).*`, `database/sql.(*Conn).*`, `database/sql.(*Stmt).*` |
 | HTTP | `net/http.ListenAndServe`, `net/http.ListenAndServeTLS`, `net/http.(*Server).*`, `net/http.(*Client).*`, `net/http.Get`, `net/http.Post`, `net/http.PostForm`, `net/http.Head`, `net/http.Handle`, `net/http.HandleFunc` |
+| Data access / crypto libraries | `github.com/jackc/pgx/v5.(*Conn).*`, `github.com/jackc/pgx/v5.(Tx).*`, `github.com/jackc/pgx/v5/pgxpool.(*Pool).*`, `github.com/jackc/pgx/v5/pgxpool.(*Conn).*`, `github.com/jackc/pgx/v5/pgxpool.(*Tx).*`, the same for `github.com/jackc/pgx/v4`, `github.com/jmoiron/sqlx.(*DB).*`, `github.com/jmoiron/sqlx.(*Tx).*`, `gorm.io/gorm.(*DB).*`, `golang.org/x/crypto/...` |
 | Deserialization / templates | `encoding/gob.*`, `encoding/xml.(*Decoder).*`, `encoding/xml.Unmarshal`, `text/template.(*Template).Execute*`, `html/template.(*Template).Execute*` |
 
 ## CI integration
