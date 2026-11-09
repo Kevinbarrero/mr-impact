@@ -39,6 +39,9 @@ type ChangedFunc struct {
 	// returns than BASE (Body and Signature only). Removed control flow
 	// changes behaviour even when no line was added.
 	BranchesRemoved bool
+	// Wiring: straight-line setup code (see isWiring). False for deleted
+	// functions.
+	Wiring bool
 }
 
 // DeclChange is a changed top-level declaration outside any function.
@@ -97,6 +100,7 @@ type fn struct {
 	exported   bool
 	paired     bool
 	branches   [4]int // case clauses, ifs, elses, returns
+	wiring     bool
 	cases      []caseEntry
 	switches   map[string]switchInfo // by switchKey
 }
@@ -195,7 +199,7 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 	for _, h := range heads {
 		cf := ChangedFunc{
 			Key: h.key, Display: h.display, File: h.file, StartLine: h.start,
-			Exported: h.exported, IsTest: false,
+			Exported: h.exported, IsTest: false, Wiring: h.wiring,
 		}
 		b := pair[h]
 		cf.AddedLines = within(changes[h.change].AddedLines, h.start, h.end)
@@ -309,6 +313,7 @@ func load(src Source, p, keyFile string, change int, changedLines []int, refs ma
 			x.sig += "|" + signature(fset, d.Type)
 			x.text = render(fset, d)
 			x.branches = branches(d)
+			x.wiring = isWiring(d)
 			x.cases, x.switches = switchCases(fset, d, path.Dir(p), fileImports(f))
 			fns = append(fns, x)
 		case *ast.GenDecl:
