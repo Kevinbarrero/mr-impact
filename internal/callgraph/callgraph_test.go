@@ -354,3 +354,70 @@ func TestImpact_TestPkgs(t *testing.T) {
 		t.Errorf("Lonely: found=%v TestPkgs=%v, want found and nil", im.Found, im.TestPkgs)
 	}
 }
+
+var (
+	epOnce  sync.Once
+	epGraph *Graph
+	epErr   error
+)
+
+func loadEntries(t *testing.T) *Graph {
+	t.Helper()
+	epOnce.Do(func() {
+		var p *load.Program
+		p, epErr = load.Load(context.Background(), "testdata/entries", nil)
+		if epErr == nil {
+			epGraph, epErr = Build(context.Background(), p)
+		}
+	})
+	if epErr != nil {
+		t.Fatal(epErr)
+	}
+	return epGraph
+}
+
+// apiPred mirrors the pipeline's root predicate (generated code aside).
+func apiPred(f FuncInfo) bool {
+	if !ast.IsExported(f.Name) || f.PkgName == "main" {
+		return false
+	}
+	if !f.Method {
+		for _, seg := range strings.Split(f.Pkg, "/") {
+			if seg == "internal" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func TestEntryPoints(t *testing.T) {
+	g := loadEntries(t)
+	const dir = "testdata/entries"
+	got := g.EntryPoints("internal/svc/svc.go", lineOf(t, dir, "internal/svc/svc.go", "func helper"), apiPred)
+	want := []Entry{
+		{"main", "main.main"},
+		{"api", "api.Do"},
+		{"registered", `HandleFunc("/x", …)`},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EntryPoints = %v, want %v", got, want)
+	}
+	if got := g.EntryPoints("internal/svc/svc.go", lineOf(t, dir, "internal/svc/svc.go", "func onlyTested"), apiPred); got != nil {
+		t.Errorf("test-only function: EntryPoints = %v, want nil", got)
+	}
+	if got := g.EntryPoints("internal/svc/svc.go", 1, apiPred); got != nil {
+		t.Errorf("unknown line: EntryPoints = %v, want nil", got)
+	}
+}
+
+func TestEntryPoints_Cap(t *testing.T) {
+	g := loadEntries(t)
+	got := g.EntryPoints("many/many.go", lineOf(t, "testdata/entries", "many/many.go", "func target"), apiPred)
+	if len(got) != 20 {
+		t.Errorf("len = %d, want 20 (%v)", len(got), got)
+	}
+	if len(got) > 0 && got[0] != (Entry{"api", "many.Call01"}) {
+		t.Errorf("first = %v", got[0])
+	}
+}
