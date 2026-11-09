@@ -45,7 +45,7 @@ A changed function is **covered only cross-package** when all of these hold:
 
 ### Rule
 
-New file `internal/symbols/wiring.go`, `isWiring(fd *ast.FuncDecl) bool`, sets `ChangedFunc.Wiring` for non-deleted, non-test functions. Wiring constructs and connects but computes nothing. A body is wiring when it meets both conditions below.
+New file `internal/symbols/wiring.go`, `isWiring(fd *ast.FuncDecl, imports map[string]string) bool` (imports: the file's import names to paths), sets `ChangedFunc.Wiring` for non-deleted, non-test functions. Wiring constructs and connects but computes nothing. A function with any parameter (the receiver excluded) of type exactly `context.Context` is never wiring: it runs per request, not once at startup. `context` is resolved through the file's imports, so an aliased import (`c "context"` → `c.Context`) counts; a dot-import is not resolved, and a pointer or any other type does not count. Otherwise a body is wiring when it meets both conditions below.
 
 **1. Statements.** Every statement, recursively in the allowed blocks, is one of:
 
@@ -117,7 +117,7 @@ Nothing here can fail on its own. Missing data degrades to today's behaviour:
 
 - **`symbols/wiring_test.go`:** table of bodies.
   - **Wiring:** constructor chain; `if err != nil { return nil, err }`; `if err := f(); err != nil { return err }`; `log.Fatal(err)`; `os.Exit(1)`; `panic(err)`; a handler closure that only calls; `g.Go(func() error { return work(c) }); return g.Wait()`.
-  - **Not wiring:** `if x > 0`, `if err != nil {…} else {…}`, `for`, `range`, `switch`, `select`, `go`, `defer`, an `if` whose init is a call statement (`if f(); err != nil`), an empty body, a closure argument containing a loop (`InTx(ctx, func(q Store) error { for … })`).
+  - **Not wiring:** `if x > 0`, `if err != nil {…} else {…}`, `for`, `range`, `switch`, `select`, `go`, `defer`, an `if` whose init is a call statement (`if f(); err != nil`), an empty body, a closure argument containing a loop (`InTx(ctx, func(q Store) error { for … })`). A function with a `context.Context` parameter (plain or aliased import) whose body would otherwise be wiring; a constructor without one stays wiring.
 - **`risk`:**
   - **Cap:** red → yellow for wiring; green and yellow unchanged; exported-signature red not capped.
   - **Cross-package:** the rule gives yellow, while 0 % with no reach stays red.

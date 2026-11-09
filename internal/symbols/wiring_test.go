@@ -66,7 +66,39 @@ func TestIsWiring(t *testing.T) {
 				t.Fatal(err)
 			}
 			fd := f.Decls[0].(*ast.FuncDecl)
-			if got := isWiring(fd); got != c.want {
+			if got := isWiring(fd, fileImports(f)); got != c.want {
+				t.Errorf("isWiring = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A function taking a context.Context runs per request, so it is never
+// wiring, whatever its body.
+func TestIsWiring_ContextParam(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"ctx", "import \"context\"\nfunc f(ctx context.Context, q Q) error { if err := q.Debit(ctx); err != nil { return err }; return nil }", false},
+		{"ctx-aliased", "import c \"context\"\nfunc f(ctx c.Context, q Q) error { if err := q.Debit(ctx); err != nil { return err }; return nil }", false},
+		{"ctx-grouped-param", "import \"context\"\nfunc f(a, ctx context.Context) error { return g(ctx) }", false},
+		{"ctx-method", "import \"context\"\nfunc (s *S) f(ctx context.Context) error { return s.q.Debit(ctx) }", false},
+		{"ctx-pointer", "import \"context\"\nfunc f(ctx *context.Context) error { return g(ctx) }", true},
+		{"other-context-pkg", "import \"example.com/context\"\nfunc f(ctx context.Context) error { return g(ctx) }", true},
+		{"dot-import", "import . \"context\"\nfunc f(ctx Context) error { return g(ctx) }", true},
+		{"no-import", "func f(ctx context.Context) error { return g(ctx) }", true},
+		{"constructor", "import \"context\"\nfunc NewS(a A) *S { return &S{a: a} }", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := parser.ParseFile(token.NewFileSet(), "p.go", "package p\n"+c.src+"\n", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fd := f.Decls[len(f.Decls)-1].(*ast.FuncDecl)
+			if got := isWiring(fd, fileImports(f)); got != c.want {
 				t.Errorf("isWiring = %v, want %v", got, c.want)
 			}
 		})
