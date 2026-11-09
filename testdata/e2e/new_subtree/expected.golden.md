@@ -5,9 +5,9 @@
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
-| 🔴 | `svc.fmt` | new | 2 (2 pkgs) | main, api svc.New | 0 % (0/5) |
-| 🟡 | `main.main` | body · wiring | 0 | main | no added lines · not reached |
-| 🟢 | `svc.New` | new · +3 | 1 | main, api svc.New | 100 % (19/19) |
+| 🔴 | `svc.fmt` | new | 2 (2 pkgs) | api svc.New | 0 % (0/5) |
+| 🟡 | `main.main` | body · wiring | 0 | — | no added lines · not reached |
+| 🟢 | `svc.New` | new · +3 | 1 | api svc.New | 100 % (19/19) |
 
 <details><summary>svc.New +3 new</summary>
 

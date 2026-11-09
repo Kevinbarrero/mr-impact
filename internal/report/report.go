@@ -4,6 +4,7 @@ package report
 import (
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -220,6 +221,7 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 		head, sep = head+" Entry points |", sep+"---|"
 	}
 	b.WriteString(head + " Added-line coverage |\n" + sep + "---|\n")
+	dropMain := withEntries && allReachMain(funcs[:min(maxTableRows, len(funcs))])
 	for i, f := range funcs {
 		if i == maxTableRows {
 			break
@@ -229,7 +231,11 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 			b.WriteString(registeredCell(f.Registered) + " | ")
 		}
 		if withEntries {
-			b.WriteString(entryCell(f.Entries) + " | ")
+			es := f.Entries
+			if dropMain {
+				es = withoutMain(es)
+			}
+			b.WriteString(entryCell(es) + " | ")
 		}
 		fmt.Fprintf(b, "%s |\n", cell(f.CoverText))
 	}
@@ -254,6 +260,27 @@ func writeMembers(b *strings.Builder, funcs []FuncRow) {
 		}
 		b.WriteString("\n</details>\n\n")
 	}
+}
+
+// allReachMain reports whether every row's entry points include main: then
+// main tells the rows apart in no way and the cells leave it out.
+func allReachMain(rows []FuncRow) bool {
+	for _, f := range rows {
+		if !slices.ContainsFunc(f.Entries, func(e callgraph.Entry) bool { return e.Kind == "main" }) {
+			return false
+		}
+	}
+	return len(rows) > 0
+}
+
+func withoutMain(es []callgraph.Entry) []callgraph.Entry {
+	var out []callgraph.Entry
+	for _, e := range es {
+		if e.Kind != "main" {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // entryCell shows the first two entry points and how many more, or a dash.

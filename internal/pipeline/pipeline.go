@@ -286,7 +286,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
 		var entries []callgraph.Entry
 		if graph != nil {
-			entries = graph.EntryPoints(f.File, f.StartLine, apiRoot(prog))
+			entries = graph.EntryPoints(f.File, f.StartLine, entryRoot(prog))
 		}
 		var callers1 []string
 		for _, c := range im.Callers {
@@ -614,5 +614,18 @@ func apiRoot(prog *load.Program) func(callgraph.FuncInfo) bool {
 	return func(f callgraph.FuncInfo) bool {
 		exported := ast.IsExported(f.Name)
 		return exported && (f.Method || importable(f.Pkg, f.PkgName)) && !prog.Generated[f.File]
+	}
+}
+
+// entryRoot is apiRoot narrowed for the Entry points column: exported
+// functions of importable packages, and exported methods of exported types
+// in importable packages; generated code never. An exported method of an
+// unexported or internal type is not a way in that a reader would name.
+func entryRoot(prog *load.Program) func(callgraph.FuncInfo) bool {
+	return func(f callgraph.FuncInfo) bool {
+		if !ast.IsExported(f.Name) || !importable(f.Pkg, f.PkgName) || prog.Generated[f.File] {
+			return false
+		}
+		return !f.Method || ast.IsExported(f.Recv)
 	}
 }

@@ -65,17 +65,17 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
 
 ### Rule
 
-`callgraph` gains `EntryPoints(file string, startLine int) []Entry`, with `Entry{Kind, Display string}`. It walks the callers of the target with no depth limit and collects these, in this order:
+`callgraph` gains `EntryPoints(file string, startLine int, api func(FuncInfo) bool) []Entry`, with `Entry{Kind, Display string}`. It walks the callers of the target with no depth limit and collects these, in this order (the most specific first):
 
-1. `main` and `init` functions reached (Kind `main` / `init`);
-2. exported functions and methods of importable packages reached, the same `root` rule `Dead` uses (Kind `api`, Display the function);
-3. registration sites of any reached function, from the existing `Registered` data (Kind `registered`, Display the shortened call, e.g. `GET("/rate-correlation", …)`).
+1. registration sites of any reached function, from the existing `Registered` data (Kind `registered`, Display the shortened call, e.g. `GET("/rate-correlation", …)`);
+2. exported functions of importable packages, and exported methods whose receiver's named type is exported, in importable packages, reached (Kind `api`, Display the function). This predicate is for entries only and narrower than the `root` rule `Dead` uses, which is unchanged (there an exported method of any type stays a root, since it may implement a dependency's interface). Generated code is never an `api` entry, as in `Dead`'s rule;
+3. `main` and `init` functions reached (Kind `main` / `init`).
 
-The target itself counts if it qualifies. Test functions are never entry points. The list is deduplicated by (Kind, Display), sorted by Kind order then Display, and capped at 20 per function.
+The target itself counts if it qualifies. Test functions are never entry points. The list is deduplicated by (Kind, Display), sorted by Kind order (registered, api, main, init) then Display, and capped at 20 per function.
 
 ### Effect
 
-- **Table:** a new column **Entry points** shows the first 2 as `main`, `api orders.Create`, `GET("/x", …)`, then ` +N`, or `—` when none. When no row has any entry point, the column is omitted, as `Registered` already is.
+- **Table:** a new column **Entry points** shows the first 2 as `GET("/x", …)`, `api orders.Create`, `main`, then ` +N`, or `—` when none. When no row has any entry point, the column is omitted, as `Registered` already is. When every row the table shows has `main` among its entry points, `main` tells them apart in no way and is left out of every cell (and of ` +N`); a cell left empty renders `—`.
 - **Rating:** unchanged. Entry points are context only.
 - **Degraded call graph:** the column is omitted.
 - A registration that is not a call argument (no call text) shows its `file:line`, as the Registered column does; entries are deduplicated on that text.

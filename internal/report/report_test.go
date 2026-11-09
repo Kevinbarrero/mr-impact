@@ -396,17 +396,17 @@ func TestRender_EntryPointsColumn(t *testing.T) {
 	with := base
 	with.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
-			{Kind: "main", Display: "main.main"}, {Kind: "api", Display: "x.Do"}, {Kind: "registered", Display: `GET("/x", …)`}}},
+			{Kind: "registered", Display: `GET("/x", …)`}, {Kind: "api", Display: "x.Do"}, {Kind: "main", Display: "main.main"}}},
 		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a"},
 		{Level: risk.Yellow, Display: "x.C", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
-			{Kind: "init", Display: "x.init"}, {Kind: "registered", Display: `GET("/a|b", …)`}}},
+			{Kind: "registered", Display: `GET("/a|b", …)`}, {Kind: "init", Display: "x.init"}}},
 	}
 	out := Render(with)
 	for _, want := range []string{
 		"| Risk | Function | Change | Callers | Entry points | Added-line coverage |",
-		"| 🟡 | `x.A` | body | 0 | main, api x.Do +1 | n/a |",
+		"| 🟡 | `x.A` | body | 0 | GET(\"/x\", …), api x.Do +1 | n/a |",
 		"| 🟡 | `x.B` | body | 0 | — | n/a |",
-		`| init, GET("/a\|b", …) | n/a |`,
+		`| GET("/a\|b", …), init | n/a |`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
@@ -416,5 +416,31 @@ func TestRender_EntryPointsColumn(t *testing.T) {
 	none.Funcs = []FuncRow{{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a"}}
 	if strings.Contains(Render(none), "Entry points") {
 		t.Error("column present with no entries")
+	}
+}
+
+// main is dropped from the cells when every shown row is reached from main:
+// it says nothing there. A cell left empty renders a dash.
+func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "api", Display: "x.Do"}, {Kind: "main", Display: "main.main"}, {Kind: "init", Display: "x.init"}}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "main", Display: "main.main"}}},
+	}
+	out := Render(m)
+	for _, want := range []string{"| `x.A` | body | 0 | api x.Do, init | n/a |", "| `x.B` | body | 0 | — | n/a |"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	// One shown row not reached from main: main stays everywhere.
+	m.Funcs = append(m.Funcs, FuncRow{Level: risk.Yellow, Display: "x.C", Kind: "body", CoverText: "n/a"})
+	out = Render(m)
+	for _, want := range []string{"| `x.A` | body | 0 | api x.Do, main +1 | n/a |", "| `x.B` | body | 0 | main | n/a |"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
 	}
 }

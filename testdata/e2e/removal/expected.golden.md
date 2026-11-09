@@ -29,10 +29,10 @@
 
 | Risk | Function | Change | Callers | Registered | Entry points | Added-line coverage |
 |---|---|---|---|---|---|---|
-| 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | main, api bus.(*Bus).Subscribe +2 | reached by test |
-| 🟡 | `svc.NewOther` | body · wiring | 1 |  | main | not reached |
-| 🟡 | `main.main` | body · wiring | 0 |  | main | not reached |
-| 🟢 | `svc.Count` | signature (exported) | 1 |  | main | reached by test |
+| 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | Subscribe("select", …) | reached by test |
+| 🟡 | `svc.NewOther` | body · wiring | 1 |  | — | not reached |
+| 🟡 | `main.main` | body · wiring | 0 |  | — | not reached |
+| 🟢 | `svc.Count` | signature (exported) | 1 |  | — | reached by test |
 
 ➖ Deleted: `svc.onHedge`, `svc.hedge`, `svc.Admin`
 

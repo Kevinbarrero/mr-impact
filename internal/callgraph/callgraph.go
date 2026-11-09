@@ -820,8 +820,9 @@ const maxEntries = 20
 // (no depth limit, narrowing calls through func values as Impact does) and
 // returns the main and init functions, the functions api accepts, and the
 // registration sites of every function reached, the target included. Tests
-// never count. Sorted by kind (main, init, api, registered) then Display,
-// deduplicated, at most 20; nil when none or the function is unknown.
+// never count. Sorted by kind (registered, api, main, init: the most
+// specific first) then Display, deduplicated, at most 20; nil when none or
+// the function is unknown.
 func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool) []Entry {
 	target, ok := g.byPos[pos{file, startLine}]
 	if !ok {
@@ -873,7 +874,7 @@ func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool)
 			add(Entry{"registered", s.Text()})
 		}
 	}
-	rank := map[string]int{"main": 0, "init": 1, "api": 2, "registered": 3}
+	rank := map[string]int{"registered": 0, "api": 1, "main": 2, "init": 3}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
 		if a.Kind != b.Kind {
