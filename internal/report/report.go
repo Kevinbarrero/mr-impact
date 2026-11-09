@@ -130,12 +130,16 @@ func Render(m Model) string {
 	if m.Folded > 0 {
 		// A trailing backslash is a hard line break: the fold line renders
 		// directly under the tally, in the same paragraph.
-		fmt.Fprintf(&b, "\\\n+%d new functions folded into %d groups", m.Folded, m.Groups)
+		groups := "groups"
+		if m.Groups == 1 {
+			groups = "group"
+		}
+		fmt.Fprintf(&b, "\\\n+%d new functions folded into %d %s", m.Folded, m.Groups, groups)
 	}
 	b.WriteString("\n\n")
 
 	if m.CrossPkgOnly > 0 {
-		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
+		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
 	}
 	writeRemovedCases(&b, m.RemovedCases)
 	writeUnused(&b, m.Unused)
@@ -210,11 +214,12 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
 	}
 	b.WriteString("\n")
-	writeMembers(b, funcs)
+	writeMembers(b, funcs[:min(maxTableRows, len(funcs))])
 }
 
 // writeMembers lists, per group row in table order, the new functions folded
-// into it, each with its own rating, kind, cover and file.
+// into it, each with its own rating, kind, cover and file. funcs are the rows
+// the table shows.
 func writeMembers(b *strings.Builder, funcs []FuncRow) {
 	for _, f := range funcs {
 		if len(f.Members) == 0 {

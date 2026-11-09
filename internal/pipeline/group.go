@@ -145,7 +145,7 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		in.Wiring = in.Wiring && f.In.Wiring
 		cross = cross || f.In.CrossPkgTestReached
 		crossPkgs = append(crossPkgs, f.CrossPkgs...)
-		if f.In.Total > 0 && f.In.Covered == 0 {
+		if f.In.Total > 0 && f.In.Covered == 0 && len(f.CrossPkgs) == 0 {
 			untested++
 		}
 		row.Members = append(row.Members, f.Row)
