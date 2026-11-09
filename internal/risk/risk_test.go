@@ -123,8 +123,52 @@ func TestLevelEmoji(t *testing.T) {
 }
 
 func TestLegend(t *testing.T) {
-	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test)"
+	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡"
 	if Legend != want {
 		t.Errorf("Legend = %q, want %q", Legend, want)
+	}
+}
+
+func TestAssess_CrossPkgIsPartial(t *testing.T) {
+	in := Input{Kind: symbols.Body, NonTestCallers: 2, HasProfile: true, Covered: 0, Total: 5}
+	if got := Assess(in); got != Red {
+		t.Fatalf("without flag = %v, want Red", got)
+	}
+	in.CrossPkgTestReached = true
+	if got := Assess(in); got != Yellow {
+		t.Fatalf("with flag = %v, want Yellow", got)
+	}
+}
+
+func TestAssess_WiringCapsRed(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Input
+		want Level
+	}{
+		{"untested with callers", Input{Kind: symbols.Body, Wiring: true, NonTestCallers: 2, HasProfile: true, Covered: 0, Total: 5}, Yellow},
+		{"covered", Input{Kind: symbols.Body, Wiring: true, NonTestCallers: 2, HasProfile: true, Covered: 5, Total: 5}, Green},
+		{"partial", Input{Kind: symbols.Body, Wiring: true, NonTestCallers: 2, HasProfile: true, Covered: 2, Total: 5}, Yellow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Assess(tt.in); got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAssess_WiringDoesNotCapExportedSignature(t *testing.T) {
+	in := Input{Kind: symbols.Signature, Exported: true, Importable: true, Wiring: true,
+		NonTestCallers: 2, HasProfile: true, Covered: 5, Total: 5}
+	if got := Assess(in); got != Red {
+		t.Fatalf("got %v, want Red", got)
+	}
+}
+
+func TestLegend_MentionsWiring(t *testing.T) {
+	if !strings.HasSuffix(Legend, "· wiring (straight-line setup) at most 🟡") {
+		t.Fatalf("Legend = %q", Legend)
 	}
 }

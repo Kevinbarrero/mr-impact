@@ -40,10 +40,16 @@ type Input struct {
 	// callers the compiler doesn't see.
 	Importable      bool
 	BranchesRemoved bool // control flow removed: never rated green
+	// CrossPkgTestReached: a test in another package reaches the function,
+	// so zero added-line coverage reads as partial, not untested.
+	CrossPkgTestReached bool
+	// Wiring: the function is straight-line setup; its rating is capped at
+	// yellow (except an exported signature change in an importable package).
+	Wiring bool
 }
 
 // Legend explains the rating in the report footer.
-const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test)"
+const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡"
 
 // Assess rates a changed function. It must not be called for symbols.Deleted,
 // which has no code left to rate; doing so panics.
@@ -56,14 +62,20 @@ func Assess(in Input) Level {
 	if in.HasProfile && in.Total > 0 {
 		untested = in.Covered == 0
 		partial = in.Covered > 0 && in.Covered < in.Total
+		if untested && in.CrossPkgTestReached {
+			untested, partial = false, true
+		}
 	} else {
 		untested = !in.TestReached // static, or 0 added lines
 	}
 
 	switch {
 	case in.Exported && in.Kind == symbols.Signature && in.Importable:
-		return Red
+		return Red // never capped by Wiring
 	case untested && in.NonTestCallers >= 1:
+		if in.Wiring {
+			return Yellow
+		}
 		return Red
 	case partial:
 		return Yellow
