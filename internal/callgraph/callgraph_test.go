@@ -397,9 +397,9 @@ func TestEntryPoints(t *testing.T) {
 	const dir = "testdata/entries"
 	got := g.EntryPoints("internal/svc/svc.go", lineOf(t, dir, "internal/svc/svc.go", "func helper"), apiPred)
 	want := []Entry{
-		{"main", "main.main"},
-		{"api", "api.Do"},
 		{"registered", `HandleFunc("/x", …)`},
+		{"api", "api.Do"},
+		{"main", "main.main"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("EntryPoints = %v, want %v", got, want)
