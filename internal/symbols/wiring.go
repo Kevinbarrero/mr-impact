@@ -9,9 +9,10 @@ import (
 // isWiring reports whether fd constructs and connects but computes nothing:
 // calls, assignments, returns and `if x != nil` error exits whose
 // expressions are all plumbing (identifiers, selectors, literals, calls,
-// composite literals, &, *, parentheses), with at least one call or
-// composite literal. Function literals are never inspected; their bodies
-// run later.
+// composite literals, &, *, parentheses, function literals), with at
+// least one call or composite literal. A function literal's body is held
+// to the same rules: a closure that computes makes fd compute too, and its
+// calls and composite literals count.
 func isWiring(fd *ast.FuncDecl) bool {
 	if fd.Body == nil || len(fd.Body.List) == 0 {
 		return false
@@ -26,7 +27,7 @@ func isWiring(fd *ast.FuncDecl) bool {
 }
 
 type wiringCheck struct {
-	built bool // saw a call or composite literal outside function literals
+	built bool // saw a call or composite literal
 }
 
 func (w *wiringCheck) exprs(es []ast.Expr) bool {
@@ -40,7 +41,14 @@ func (w *wiringCheck) exprs(es []ast.Expr) bool {
 
 func (w *wiringCheck) expr(e ast.Expr) bool {
 	switch e := e.(type) {
-	case *ast.Ident, *ast.BasicLit, *ast.FuncLit:
+	case *ast.Ident, *ast.BasicLit:
+		return true
+	case *ast.FuncLit:
+		for _, s := range e.Body.List {
+			if !w.stmt(s) {
+				return false
+			}
+		}
 		return true
 	case *ast.SelectorExpr:
 		return w.expr(e.X)
