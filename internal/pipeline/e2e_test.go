@@ -430,8 +430,10 @@ func TestRun_NilSensitiveUsesDefaults(t *testing.T) {
 	}
 }
 
-// TestRun_DegradedStillSensitive: without a call graph the sensitive rule
-// still rates by the profile-less test reach, and no entry points are shown.
+// TestRun_DegradedStillSensitive: without a call graph and a profile, test
+// reach is unknown: sensitive functions are still listed in the section but
+// the untested-sensitive rule does not rate them, and no entry points are
+// shown.
 func TestRun_DegradedStillSensitive(t *testing.T) {
 	dir := filepath.Join("..", "..", "testdata", "e2e", "sensitive_zero_config")
 	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
@@ -446,11 +448,16 @@ func TestRun_DegradedStillSensitive(t *testing.T) {
 	if !m.Degraded {
 		t.Fatal("Degraded = false, want the call graph timeout")
 	}
-	if r := rowOf(t, m, "run.Exec"); r.Level != risk.Red {
-		t.Errorf("run.Exec = %v, want red", r.Level)
+	s, ok := sensitiveOf(m, "run.Exec")
+	if !ok {
+		t.Fatal("run.Exec not listed in the sensitive section")
 	}
-	if len(m.Sensitive) == 0 {
-		t.Error("no sensitive rows")
+	if s.Untested {
+		t.Error("run.Exec: untested-sensitive rule fired with test reach unknown")
+	}
+	// Today's rule for an unknown reach with no callers known: yellow.
+	if r := rowOf(t, m, "run.Exec"); r.Level != risk.Yellow {
+		t.Errorf("run.Exec = %v, want yellow (today's rating)", r.Level)
 	}
 	for _, r := range m.Funcs {
 		if len(r.Entries) > 0 {
