@@ -168,3 +168,30 @@ func contains(s []string, x string) bool {
 	}
 	return false
 }
+
+func TestProgram_FuncDecl(t *testing.T) {
+	dir := writeModule(t, map[string]string{
+		"go.mod":      goMod,
+		"a/a.go":      "package a\n\ntype T struct{}\n\nfunc F() int { return 1 }\n\nfunc (T) M() {}\n",
+		"a/a_test.go": "package a\n\nimport \"testing\"\n\nfunc TestF(t *testing.T) { F() }\n",
+	})
+	p, err := Load(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		line int
+		name string
+	}{{5, "F"}, {7, "M"}} {
+		fd, info, path, ok := p.FuncDecl("a/a.go", c.line)
+		if !ok || fd.Name.Name != c.name || info == nil || path != "example.com/m/a" {
+			t.Errorf("line %d: got %v %v %q %v", c.line, fd, info != nil, path, ok)
+		}
+	}
+	if _, _, _, ok := p.FuncDecl("a/a.go", 6); ok {
+		t.Error("blank line: ok = true")
+	}
+	if _, _, _, ok := p.FuncDecl("a/a_test.go", 5); ok {
+		t.Error("test file: ok = true")
+	}
+}

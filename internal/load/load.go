@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -276,4 +277,28 @@ func relativizer(root string) func(string) (string, bool) {
 // slash-separated path; ok is false for files outside the module root.
 func (p *Program) Rel(name string) (string, bool) {
 	return p.rel(name)
+}
+
+// FuncDecl returns the declaration starting at file:line (repo-relative
+// file, line of the func keyword) in a non-test package variant, with its
+// package's type info and import path; ok is false when there is none (e.g.
+// the file is excluded by build tags).
+func (p *Program) FuncDecl(file string, line int) (fd *ast.FuncDecl, info *types.Info, pkgPath string, ok bool) {
+	for _, pkg := range p.Packages {
+		if strings.HasSuffix(pkg.ID, ".test]") || strings.HasSuffix(pkg.Name, "_test") {
+			continue
+		}
+		for _, f := range pkg.Syntax {
+			name := pkg.Fset.Position(f.Package).Filename
+			if r, ok := p.rel(name); !ok || r != file {
+				continue
+			}
+			for _, d := range f.Decls {
+				if fd, ok := d.(*ast.FuncDecl); ok && pkg.Fset.Position(fd.Pos()).Line == line {
+					return fd, pkg.TypesInfo, pkg.PkgPath, true
+				}
+			}
+		}
+	}
+	return nil, nil, "", false
 }

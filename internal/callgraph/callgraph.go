@@ -469,22 +469,7 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		var next []item
 		for _, it := range frontier {
 			u := it.id
-			cs := g.callers(u)
-			if it.only >= 0 {
-				regs := g.referencers(it.only)
-				var kept []callerEdge
-				for _, c := range cs {
-					if regs[c.id] {
-						kept = append(kept, c)
-					}
-				}
-				if len(kept) == 0 {
-					for _, id := range sortedKeys(regs) {
-						kept = append(kept, callerEdge{id: id, kind: edgeDirect})
-					}
-				}
-				cs = kept
-			}
+			cs := g.callersOf(u, it.only)
 			for _, c := range cs {
 				kind := Calls
 				switch {
@@ -547,6 +532,30 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		return a.Pkg < b.Pkg
 	})
 	return im
+}
+
+// callersOf returns the callers of u to walk on. With only >= 0 (u was
+// reached through a call of a func value) they are narrowed to the
+// registrants of node only, or those registrants themselves when no caller
+// is one.
+func (g *Graph) callersOf(u, only int) []callerEdge {
+	cs := g.callers(u)
+	if only < 0 {
+		return cs
+	}
+	regs := g.referencers(only)
+	var kept []callerEdge
+	for _, c := range cs {
+		if regs[c.id] {
+			kept = append(kept, c)
+		}
+	}
+	if len(kept) == 0 {
+		for _, id := range sortedKeys(regs) {
+			kept = append(kept, callerEdge{id: id, kind: edgeDirect})
+		}
+	}
+	return kept
 }
 
 type callerEdge struct {
@@ -787,5 +796,83 @@ func sortedKeys[V any](m map[int]V) []int {
 		out = append(out, k)
 	}
 	sort.Ints(out)
+	return out
+}
+
+// Entry is a way into the program that reaches a function: Kind is "main",
+// "init", "api" or "registered"; Display the function, or for a registered
+// one the registration call.
+type Entry struct{ Kind, Display string }
+
+const maxEntries = 20
+
+// EntryPoints walks all callers of the function declared at file:startLine
+// (no depth limit, narrowing calls through func values as Impact does) and
+// returns the main and init functions, the functions api accepts, and the
+// registration sites of every function reached, the target included. Tests
+// never count. Sorted by kind (main, init, api, registered) then Display,
+// deduplicated, at most 20; nil when none or the function is unknown.
+func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool) []Entry {
+	target, ok := g.byPos[pos{file, startLine}]
+	if !ok {
+		return nil
+	}
+	type item struct{ id, only int }
+	queued := map[item]bool{{target, -1}: true}
+	reached := map[int]bool{target: true}
+	frontier := []item{{target, -1}}
+	for len(frontier) > 0 {
+		var next []item
+		for _, it := range frontier {
+			for _, c := range g.callersOf(it.id, it.only) {
+				reached[c.id] = true
+				for _, nx := range c.items(it.id) {
+					if n := (item{c.id, nx}); !queued[n] {
+						queued[n] = true
+						next = append(next, n)
+					}
+				}
+			}
+		}
+		frontier = next
+	}
+
+	seen := map[Entry]bool{}
+	var out []Entry
+	add := func(e Entry) {
+		if !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	for _, id := range sortedKeys(reached) {
+		n := g.nodes[id]
+		if n.test || n.synthetic {
+			continue
+		}
+		switch {
+		case g.entry(n) && n.name == "init":
+			add(Entry{"init", n.display})
+		case g.entry(n):
+			add(Entry{"main", n.display})
+		}
+		if api != nil && api(g.info(n)) {
+			add(Entry{"api", n.display})
+		}
+		for _, s := range g.registered(id) {
+			add(Entry{"registered", s.Call})
+		}
+	}
+	rank := map[string]int{"main": 0, "init": 1, "api": 2, "registered": 3}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Kind != b.Kind {
+			return rank[a.Kind] < rank[b.Kind]
+		}
+		return a.Display < b.Display
+	})
+	if len(out) > maxEntries {
+		out = out[:maxEntries]
+	}
 	return out
 }
