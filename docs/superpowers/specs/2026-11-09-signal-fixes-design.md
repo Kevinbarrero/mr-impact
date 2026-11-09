@@ -45,11 +45,15 @@ A changed function is **covered only cross-package** when all of these hold:
 
 ### Rule
 
-New file `internal/symbols/wiring.go`, `isWiring(fd *ast.FuncDecl) bool`, sets `ChangedFunc.Wiring` for non-deleted, non-test functions. A body is wiring when every statement, recursively in the allowed blocks, is one of:
+New file `internal/symbols/wiring.go`, `isWiring(fd *ast.FuncDecl) bool`, sets `ChangedFunc.Wiring` for non-deleted, non-test functions. Wiring constructs and connects but computes nothing. A body is wiring when it meets both conditions below.
+
+**1. Statements.** Every statement, recursively in the allowed blocks, is one of:
 
 - an expression statement (a call), or an assignment or `:=` / `var` declaration;
 - `return`, with any results;
 - an `if` whose condition is `<ident> != nil` (or `nil != <ident>`), with no `else`, and an optional init statement that is itself an assignment or `:=` (`if err := f(); err != nil`), whose body only returns, calls `panic`, or calls a function or method whose name starts with `Fatal` or is `Exit`. An optional preceding call or assignment in the body is allowed, so `log.Printf(…); return err` counts.
+
+**2. Plumbing only.** Every expression in the body, outside function literals, is plumbing: an identifier, a selector (`x.y`), a basic literal, a call whose function and arguments are plumbing (type conversions are calls), a composite literal whose elements and key-value pairs are plumbing, `&` or `*` of plumbing, or parentheses around plumbing. Binary operators (arithmetic, comparison, logical), index, slice, type assertion and unary operators other than `&` (`!`, `-`, `<-`) make the function not wiring. The only exception is the `<ident> != nil` condition above. This covers assignment sides, return results, call statements, `var` values and the `if` init. The body must also contain at least one call or composite literal, so a body of only `return x` or `return nil` is not wiring.
 
 Function literals that appear as expressions (arguments, assigned values) are not inspected. Their bodies are code that runs later, not branching in the constructor. Any other statement makes the function not wiring: `if` (other conditions, or with `else`), `for`, `range`, `switch`, `type switch`, `select`, `go`, `defer`, `goto`, labelled statements, and an `if` whose init is anything but an assignment. An empty body is not wiring.
 
