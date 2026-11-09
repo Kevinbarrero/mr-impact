@@ -42,6 +42,7 @@ func TestE2E(t *testing.T) {
 		{name: "removal"},
 		{name: "cross_pkg_coverage", profiles: []string{"coverage.out"}},
 		{name: "wiring"},
+		{name: "new_subtree", profiles: []string{"coverage.out"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,6 +170,31 @@ func TestTimeoutDegrades(t *testing.T) {
 	// Callers are unknown, so an untested func is Yellow, never Red.
 	if len(r.Callers) != 0 || r.CoverText != "n/a" || r.Level != risk.Yellow {
 		t.Errorf("row = %+v, want no callers, n/a, yellow", r)
+	}
+}
+
+// TestRun_DegradedGraphNoGroups: without a call graph nothing is known
+// about callers, so nothing is folded and every function keeps its row.
+func TestRun_DegradedGraphNoGroups(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "new_subtree")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, Depth: 2, Timeout: time.Nanosecond})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !m.Degraded {
+		t.Fatal("Degraded = false, want the call graph timeout")
+	}
+	if m.Folded != 0 || m.Groups != 0 {
+		t.Errorf("Folded=%d Groups=%d, want 0", m.Folded, m.Groups)
+	}
+	for _, r := range m.Funcs {
+		if len(r.Members) > 0 {
+			t.Errorf("row %s has members %+v", r.Display, r.Members)
+		}
+	}
+	if len(m.Funcs) != 6 {
+		t.Errorf("Funcs = %d rows, want 6 (main.main and the five new svc functions)", len(m.Funcs))
 	}
 }
 
