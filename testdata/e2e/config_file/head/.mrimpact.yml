@@ -1,0 +1,6 @@
+# Project knowledge for mrimpact.
+critical:
+  - internal/pay/...
+sensitive:
+  remove:
+    - reflect.*

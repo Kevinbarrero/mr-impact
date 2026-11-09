@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
 )
 
@@ -358,5 +359,34 @@ func TestRender_MembersOnlyForShownRows(t *testing.T) {
 	}
 	if strings.Contains(out, "p.zHidden +1 new") || strings.Contains(out, "p/h.go") {
 		t.Errorf("members of a row past the table are listed:\n%s", out)
+	}
+}
+
+func TestRender_SensitiveSection(t *testing.T) {
+	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0",
+		Funcs:    []FuncRow{{Level: risk.Red, Display: "pkg.F", Kind: "body · sensitive", CoverText: "0 % (0/7)"}},
+		RegAdded: []registrations.Registration{{Call: `GET("/x", …)`, Handler: "h.X", Callee: "GET", File: "h/h.go", Line: 3}},
+		Sensitive: []SensitiveRow{
+			{Level: risk.Green, Display: "a.Many", APIs: []string{"os.Remove", "os.Rename", "reflect.TypeOf", "unsafe.Pointer"}, CoverText: "100 % (3/3)"},
+			{Level: risk.Yellow, Display: "a.Partial", APIs: []string{"os/exec.Command"}, Critical: "internal/a/...", CoverText: "50 % (1/2)"},
+			{Level: risk.Red, Display: "pay.Settle", Critical: "internal/pay/...", CoverText: "not reached", Untested: true},
+			{Level: risk.Red, Display: "pkg.F", APIs: []string{"os/exec.Command", "database/sql.(*Tx).Exec"}, CoverText: "0 % (0/7)", Untested: true},
+		},
+	}
+	out := Render(m)
+	want := "🔐 **Sensitive code changed** (4):\n\n" +
+		"- 🔴 `pay.Settle` — critical: internal/pay/... · not reached\n" +
+		"- 🔴 `pkg.F` — os/exec.Command, database/sql.(*Tx).Exec · 0 % (0/7)\n" +
+		"- 🟢 `a.Many` — os.Remove, os.Rename, reflect.TypeOf +1 · 100 % (3/3)\n" +
+		"- 🟡 `a.Partial` — os/exec.Command, critical: internal/a/... · 50 % (1/2)\n\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing %q in\n%s", want, out)
+	}
+	reg, sec, table := strings.Index(out, "Registrations added"), strings.Index(out, "🔐"), strings.Index(out, "| Risk |")
+	if !(reg < sec && sec < table) {
+		t.Errorf("section must come after the registration sections and before the table:\n%s", out)
+	}
+	if strings.Contains(Render(Model{Coverage: "static", BaseSHA: "abcdef0"}), "🔐") {
+		t.Error("empty section rendered")
 	}
 }

@@ -221,3 +221,73 @@ func TestMissingTokenStrict(t *testing.T) {
 		t.Fatalf("code=%d requests=%d stderr=%s", code, n.Load(), stderr)
 	}
 }
+
+func TestMain_InvalidConfigExits2(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	if err := os.WriteFile(filepath.Join(repo, ".mrimpact.yml"), []byte("critcal: [x]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "r.md")
+	code, stdout, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--out", out)
+	if code != 2 || !strings.Contains(stderr, "critcal") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+	if !strings.HasPrefix(stderr, "mrimpact: config: ") || strings.Count(stderr, "\n") != 1 || strings.Contains(stderr, "  ") {
+		t.Errorf("want one collapsed line \"mrimpact: config: …\", got %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a note was printed: %q", stdout)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("--out written despite the config error: %v", err)
+	}
+}
+
+func TestMain_ExplicitMissingConfigExits2(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	out := filepath.Join(t.TempDir(), "r.md")
+	missing := filepath.Join(t.TempDir(), "nope.yml")
+	code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--config", missing, "--out", out)
+	if code != 2 || !strings.HasPrefix(stderr, "mrimpact: config: ") || !strings.Contains(stderr, "nope.yml") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("--out written despite the config error: %v", err)
+	}
+}
+
+func TestMain_BadSensitivePatternExits2(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	cfg := filepath.Join(t.TempDir(), "c.yml")
+	if err := os.WriteFile(cfg, []byte("sensitive:\n  remove: [os.Exit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--config", cfg, "--out", filepath.Join(t.TempDir(), "r.md"))
+	if code != 2 || !strings.HasPrefix(stderr, "mrimpact: config: ") || !strings.Contains(stderr, "os.Exit") {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+}
+
+// Review Focus 4: .mrimpact.yml is read from --dir, not the working directory.
+func TestRun_ConfigReadFromDir(t *testing.T) {
+	repo, base := fixture(t, "config_file")
+	out := filepath.Join(t.TempDir(), "r.md")
+	elsewhere := t.TempDir()
+	// A broken file in the working directory: reading it would exit 2.
+	if err := os.WriteFile(filepath.Join(elsewhere, ".mrimpact.yml"), []byte("critcal: [x]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(elsewhere)
+	code, stdout, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--out", out)
+	if code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	for _, want := range []string{
+		"| 🔴 | `pay.Settle` | body · sensitive |",
+		"- 🔴 `pay.Settle` — critical: internal/pay/... · ",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("missing %q in\n%s", want, stdout)
+		}
+	}
+}
