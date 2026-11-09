@@ -6,45 +6,113 @@ import (
 	"strings"
 )
 
-// isWiring reports whether fd is straight-line setup code: calls,
-// assignments, returns and `if x != nil` error exits, nothing else.
-// Function literals are never inspected; their bodies run later.
+// isWiring reports whether fd constructs and connects but computes nothing:
+// calls, assignments, returns and `if x != nil` error exits whose
+// expressions are all plumbing (identifiers, selectors, literals, calls,
+// composite literals, &, *, parentheses), with at least one call or
+// composite literal. Function literals are never inspected; their bodies
+// run later.
 func isWiring(fd *ast.FuncDecl) bool {
 	if fd.Body == nil || len(fd.Body.List) == 0 {
 		return false
 	}
+	w := &wiringCheck{}
 	for _, s := range fd.Body.List {
-		if !wiringStmt(s) {
+		if !w.stmt(s) {
+			return false
+		}
+	}
+	return w.built
+}
+
+type wiringCheck struct {
+	built bool // saw a call or composite literal outside function literals
+}
+
+func (w *wiringCheck) exprs(es []ast.Expr) bool {
+	for _, e := range es {
+		if !w.expr(e) {
 			return false
 		}
 	}
 	return true
 }
 
-func wiringStmt(s ast.Stmt) bool {
-	switch s := s.(type) {
-	case *ast.ExprStmt:
-		_, ok := s.X.(*ast.CallExpr)
-		return ok
-	case *ast.AssignStmt, *ast.ReturnStmt:
+func (w *wiringCheck) expr(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.Ident, *ast.BasicLit, *ast.FuncLit:
 		return true
-	case *ast.DeclStmt:
-		gd, ok := s.Decl.(*ast.GenDecl)
-		return ok && gd.Tok == token.VAR
-	case *ast.IfStmt:
-		return wiringIf(s)
+	case *ast.SelectorExpr:
+		return w.expr(e.X)
+	case *ast.ParenExpr:
+		return w.expr(e.X)
+	case *ast.StarExpr:
+		return w.expr(e.X)
+	case *ast.UnaryExpr:
+		return e.Op == token.AND && w.expr(e.X)
+	case *ast.CallExpr:
+		w.built = true
+		switch e.Fun.(type) {
+		case *ast.ArrayType, *ast.MapType, *ast.ChanType, *ast.FuncType, *ast.InterfaceType:
+		default:
+			if !w.expr(e.Fun) {
+				return false
+			}
+		}
+		return w.exprs(e.Args)
+	case *ast.CompositeLit:
+		w.built = true
+		for _, el := range e.Elts {
+			if kv, ok := el.(*ast.KeyValueExpr); ok {
+				if !w.expr(kv.Key) || !w.expr(kv.Value) {
+					return false
+				}
+				continue
+			}
+			if !w.expr(el) {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }
 
-// wiringIf accepts `if [init;] x != nil { [calls/assigns;] terminating }`
+func (w *wiringCheck) stmt(s ast.Stmt) bool {
+	switch s := s.(type) {
+	case *ast.ExprStmt:
+		_, ok := s.X.(*ast.CallExpr)
+		return ok && w.expr(s.X)
+	case *ast.AssignStmt:
+		return w.exprs(s.Lhs) && w.exprs(s.Rhs)
+	case *ast.ReturnStmt:
+		return w.exprs(s.Results)
+	case *ast.DeclStmt:
+		gd, ok := s.Decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.VAR {
+			return false
+		}
+		for _, sp := range gd.Specs {
+			if vs, ok := sp.(*ast.ValueSpec); ok && !w.exprs(vs.Values) {
+				return false
+			}
+		}
+		return true
+	case *ast.IfStmt:
+		return w.ifStmt(s)
+	}
+	return false
+}
+
+// ifStmt accepts `if [init;] x != nil { [calls/assigns;] terminating }`
 // with no else.
-func wiringIf(s *ast.IfStmt) bool {
+func (w *wiringCheck) ifStmt(s *ast.IfStmt) bool {
 	if s.Else != nil || !notNilCheck(s.Cond) {
 		return false
 	}
 	if s.Init != nil {
-		if _, ok := s.Init.(*ast.AssignStmt); !ok {
+		a, ok := s.Init.(*ast.AssignStmt)
+		if !ok || !w.stmt(a) {
 			return false
 		}
 	}
@@ -53,17 +121,16 @@ func wiringIf(s *ast.IfStmt) bool {
 		return false
 	}
 	for _, b := range body[:len(body)-1] {
-		switch b := b.(type) {
-		case *ast.ExprStmt:
-			if _, ok := b.X.(*ast.CallExpr); !ok {
+		switch b.(type) {
+		case *ast.ExprStmt, *ast.AssignStmt:
+			if !w.stmt(b) {
 				return false
 			}
-		case *ast.AssignStmt:
 		default:
 			return false
 		}
 	}
-	return terminating(body[len(body)-1])
+	return w.terminating(body[len(body)-1])
 }
 
 func notNilCheck(e ast.Expr) bool {
@@ -78,13 +145,13 @@ func notNilCheck(e ast.Expr) bool {
 
 // terminating: a return, or a call named panic, Fatal* or Exit (matched on
 // the called name only).
-func terminating(s ast.Stmt) bool {
+func (w *wiringCheck) terminating(s ast.Stmt) bool {
 	switch s := s.(type) {
 	case *ast.ReturnStmt:
-		return true
+		return w.stmt(s)
 	case *ast.ExprStmt:
 		call, ok := s.X.(*ast.CallExpr)
-		if !ok {
+		if !ok || !w.expr(call) {
 			return false
 		}
 		var name string

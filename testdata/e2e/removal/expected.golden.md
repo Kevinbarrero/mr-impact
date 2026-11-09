@@ -32,7 +32,7 @@
 | 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | reached by test |
 | 🟡 | `svc.NewOther` | body · wiring | 1 |  | not reached |
 | 🟡 | `main.main` | body · wiring | 0 |  | not reached |
-| 🟢 | `svc.Count` | signature (exported) · wiring | 1 |  | reached by test |
+| 🟢 | `svc.Count` | signature (exported) | 1 |  | reached by test |
 
 ➖ Deleted: `svc.onHedge`, `svc.hedge`, `svc.Admin`
 
