@@ -35,6 +35,10 @@ type ChangedFunc struct {
 	Exported   bool  // name exported AND (no receiver OR receiver type exported)
 	AddedLines []int // added HEAD lines inside the decl range
 	IsTest     bool
+	// BranchesRemoved: HEAD has fewer case clauses, if/else branches or
+	// returns than BASE (Body and Signature only). Removed control flow
+	// changes behaviour even when no line was added.
+	BranchesRemoved bool
 }
 
 // DeclChange is a changed top-level declaration outside any function.
@@ -46,8 +50,35 @@ type DeclChange struct {
 
 type Result struct {
 	Funcs        []ChangedFunc
-	Decls        []DeclChange
+	Decls        []DeclChange // never imports, nor declarations of deleted files
 	TestsTouched []string
+	DeletedFiles []string // non-test files removed by the diff, sorted
+	// DeletedRefs holds what the deleted lines of non-test files name: the
+	// functions the removed code called or referenced, among others. A
+	// HEAD function named here may have lost its last caller.
+	DeletedRefs map[Ref]bool
+	// RemovedCases: named case values (constants, types) removed from a
+	// switch that is still there. If the value still exists it now reaches
+	// default, or no case at all.
+	RemovedCases []RemovedCase
+}
+
+// RemovedCase is a case value a changed function's switch no longer lists
+// while the switch itself remains.
+type RemovedCase struct {
+	Func       string // Display of the function
+	File       string // HEAD
+	Line       int    // HEAD line of the switch
+	Case       string // the case expression as written in BASE
+	Ref        Ref    // what it names; the caller checks it still exists
+	HasDefault bool   // the HEAD switch has a default clause
+}
+
+// Ref is a name used by removed code, resolved from its syntax alone.
+type Ref struct {
+	Dir    string // repo-relative dir of the package the name belongs to ("" if Import is set)
+	Import string // import path, for pkg.Name through the file's imports
+	Name   string
 }
 
 // Source returns file contents; it must return an error wrapping
@@ -65,11 +96,25 @@ type fn struct {
 	text       string // printed whole declaration
 	exported   bool
 	paired     bool
+	branches   [4]int // case clauses, ifs, elses, returns
+	cases      []caseEntry
+	switches   map[string]switchInfo // by switchKey
+}
+
+type caseEntry struct {
+	key  string // switchKey + "\x00" + case text
+	text string
+	ref  Ref
+}
+
+type switchInfo struct {
+	line       int
+	hasDefault bool
 }
 
 // Find compares HEAD and BASE for every non-test change.
 func Find(changes []diff.FileChange, head, base Source) (Result, error) {
-	var res Result
+	res := Result{DeletedRefs: map[Ref]bool{}}
 	var heads, bases []*fn
 	declSeen := map[string]bool{}
 
@@ -88,7 +133,7 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 			keyFile = c.OldPath
 		}
 		if c.Status != diff.Deleted {
-			fns, decls, err := load(head, c.Path, keyFile, i, c.AddedLines)
+			fns, decls, err := load(head, c.Path, keyFile, i, c.AddedLines, nil)
 			if err != nil {
 				return Result{}, err
 			}
@@ -96,12 +141,17 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 			addDecls(&res, declSeen, decls)
 		}
 		if c.Status != diff.Added {
-			fns, decls, err := load(base, c.OldPath, keyFile, i, c.DeletedLines)
+			fns, decls, err := load(base, c.OldPath, keyFile, i, c.DeletedLines, res.DeletedRefs)
 			if err != nil {
 				return Result{}, err
 			}
 			bases = append(bases, fns...)
-			addDecls(&res, declSeen, decls)
+			// A deleted file's declarations went with it; DeletedFiles says so.
+			if c.Status == diff.Deleted {
+				res.DeletedFiles = append(res.DeletedFiles, c.OldPath)
+			} else {
+				addDecls(&res, declSeen, decls)
+			}
 		}
 	}
 
@@ -165,6 +215,12 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 			if h.sig != b.sig {
 				cf.Kind = Signature
 			}
+			for k := range h.branches {
+				if h.branches[k] < b.branches[k] {
+					cf.BranchesRemoved = true
+				}
+			}
+			res.RemovedCases = append(res.RemovedCases, removedCases(h, b)...)
 		}
 		res.Funcs = append(res.Funcs, cf)
 	}
@@ -193,6 +249,7 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 		return a.Line < b.Line
 	})
 	sort.Strings(res.TestsTouched)
+	sort.Strings(res.DeletedFiles)
 	return res, nil
 }
 
@@ -207,8 +264,9 @@ func addDecls(res *Result, seen map[string]bool, ds []DeclChange) {
 }
 
 // load parses one file and returns its functions plus the top-level
-// declarations (outside any function) containing any of changedLines.
-func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn, []DeclChange, error) {
+// declarations (outside any function) containing any of changedLines. If
+// refs is non-nil, the names used on changed lines are added to it.
+func load(src Source, p, keyFile string, change int, changedLines []int, refs map[Ref]bool) ([]*fn, []DeclChange, error) {
 	data, err := src(p)
 	if err != nil {
 		return nil, nil, fmt.Errorf("symbols: read %s: %w", p, err)
@@ -217,6 +275,9 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 	f, err := parser.ParseFile(fset, p, data, parser.ParseComments)
 	if err != nil {
 		return nil, nil, fmt.Errorf("symbols: parse %s: %w", p, err)
+	}
+	if refs != nil && len(changedLines) > 0 {
+		collectRefs(fset, f, path.Dir(p), changedLines, refs)
 	}
 	pkg := f.Name.Name
 	dir := path.Dir(p)
@@ -247,6 +308,8 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 			}
 			x.sig += "|" + signature(fset, d.Type)
 			x.text = render(fset, d)
+			x.branches = branches(d)
+			x.cases, x.switches = switchCases(fset, d, path.Dir(p), fileImports(f))
 			fns = append(fns, x)
 		case *ast.GenDecl:
 			s, e := fset.Position(d.Pos()).Line, fset.Position(d.End()).Line
@@ -259,9 +322,197 @@ func load(src Source, p, keyFile string, change int, changedLines []int) ([]*fn,
 	return fns, decls, nil
 }
 
+// collectRefs adds the names used on lines of f to refs: a bare name
+// belongs to f's own package (dir); pkg.Name to the package f imports as
+// pkg; x.name (a method or field) to f's own package too, since only
+// unexported methods can be reported unused and those are callable only
+// from their own package.
+func collectRefs(fset *token.FileSet, f *ast.File, dir string, lines []int, refs map[Ref]bool) {
+	on := map[int]bool{}
+	for _, l := range lines {
+		on[l] = true
+	}
+	imports := fileImports(f)
+	var visit func(n ast.Node) bool
+	visit = func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.SelectorExpr:
+			if on[fset.Position(n.Sel.Pos()).Line] {
+				if x, ok := n.X.(*ast.Ident); ok && imports[x.Name] != "" {
+					refs[Ref{Import: imports[x.Name], Name: n.Sel.Name}] = true
+				} else {
+					refs[Ref{Dir: dir, Name: n.Sel.Name}] = true
+				}
+			}
+			ast.Inspect(n.X, visit)
+			return false
+		case *ast.Ident:
+			if on[fset.Position(n.Pos()).Line] {
+				refs[Ref{Dir: dir, Name: n.Name}] = true
+			}
+		}
+		return true
+	}
+	ast.Inspect(f, visit)
+}
+
+// fileImports maps f's import names to import paths.
+func fileImports(f *ast.File) map[string]string {
+	imports := map[string]string{}
+	for _, im := range f.Imports {
+		ip := strings.Trim(im.Path.Value, `"`)
+		name := importName(ip)
+		if im.Name != nil {
+			name = im.Name.Name
+		}
+		if name != "_" && name != "." {
+			imports[name] = ip
+		}
+	}
+	return imports
+}
+
+// switchCases lists d's named case values (identifiers, pkg.Name, *T) per
+// switch, keyed by the switched expression, and its switches.
+func switchCases(fset *token.FileSet, d *ast.FuncDecl, dir string, imports map[string]string) ([]caseEntry, map[string]switchInfo) {
+	var cases []caseEntry
+	switches := map[string]switchInfo{}
+	if d.Body == nil {
+		return nil, switches
+	}
+	ast.Inspect(d.Body, func(n ast.Node) bool {
+		var key string
+		var body *ast.BlockStmt
+		switch n := n.(type) {
+		case *ast.SwitchStmt:
+			if n.Tag == nil {
+				return true // switch { case cond: } has no values
+			}
+			key, body = "expr:"+types.ExprString(n.Tag), n.Body
+		case *ast.TypeSwitchStmt:
+			x := typeSwitchSubject(n)
+			if x == nil {
+				return true
+			}
+			key, body = "type:"+types.ExprString(x), n.Body
+		default:
+			return true
+		}
+		info := switchInfo{line: fset.Position(n.Pos()).Line}
+		for _, st := range body.List {
+			cc := st.(*ast.CaseClause)
+			if cc.List == nil {
+				info.hasDefault = true
+			}
+			for _, e := range cc.List {
+				ref, ok := caseRef(e, dir, imports)
+				if !ok {
+					continue
+				}
+				text := types.ExprString(e)
+				cases = append(cases, caseEntry{key: key + "\x00" + text, text: text, ref: ref})
+			}
+		}
+		switches[key] = info
+		return true
+	})
+	return cases, switches
+}
+
+func typeSwitchSubject(n *ast.TypeSwitchStmt) ast.Expr {
+	var e ast.Expr
+	switch a := n.Assign.(type) {
+	case *ast.ExprStmt:
+		e = a.X
+	case *ast.AssignStmt:
+		if len(a.Rhs) == 1 {
+			e = a.Rhs[0]
+		}
+	}
+	if ta, ok := e.(*ast.TypeAssertExpr); ok {
+		return ta.X
+	}
+	return nil
+}
+
+// caseRef resolves a case expression naming a package-level object.
+func caseRef(e ast.Expr, dir string, imports map[string]string) (Ref, bool) {
+	switch e := ast.Unparen(e).(type) {
+	case *ast.StarExpr:
+		return caseRef(e.X, dir, imports)
+	case *ast.Ident:
+		return Ref{Dir: dir, Name: e.Name}, true
+	case *ast.SelectorExpr:
+		if x, ok := e.X.(*ast.Ident); ok && imports[x.Name] != "" {
+			return Ref{Import: imports[x.Name], Name: e.Sel.Name}, true
+		}
+	}
+	return Ref{}, false
+}
+
+// removedCases returns the case values of b missing from h, for switches
+// h still has.
+func removedCases(h, b *fn) []RemovedCase {
+	left := map[string]int{}
+	for _, c := range h.cases {
+		left[c.key]++
+	}
+	var out []RemovedCase
+	for _, c := range b.cases {
+		if left[c.key] > 0 {
+			left[c.key]--
+			continue
+		}
+		sw, _, _ := strings.Cut(c.key, "\x00")
+		info, ok := h.switches[sw]
+		if !ok {
+			continue
+		}
+		out = append(out, RemovedCase{Func: h.display, File: h.file, Line: info.line,
+			Case: c.text, Ref: c.ref, HasDefault: info.hasDefault})
+	}
+	return out
+}
+
+// importName guesses the package name of import path ip from its last
+// element, skipping a major-version suffix (example.com/m/v2 -> m).
+func importName(ip string) string {
+	parts := strings.Split(ip, "/")
+	name := parts[len(parts)-1]
+	if len(parts) > 1 && len(name) > 1 && name[0] == 'v' && strings.Trim(name[1:], "0123456789") == "" {
+		name = parts[len(parts)-2]
+	}
+	return name
+}
+
+// branches counts d's case clauses (switch and select), ifs, elses and
+// returns, closures included.
+func branches(d *ast.FuncDecl) [4]int {
+	var c [4]int
+	if d.Body == nil {
+		return c
+	}
+	ast.Inspect(d.Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.CaseClause, *ast.CommClause:
+			c[0]++
+		case *ast.IfStmt:
+			c[1]++
+			if n.Else != nil {
+				c[2]++
+			}
+		case *ast.ReturnStmt:
+			c[3]++
+		}
+		return true
+	})
+	return c
+}
+
 func genDeclChanges(fset *token.FileSet, file string, d *ast.GenDecl, lines []int) []DeclChange {
+	// Import changes follow from the code changes; the compiler checks them.
 	if d.Tok == token.IMPORT {
-		return []DeclChange{{File: file, Line: fset.Position(d.Pos()).Line, What: "import"}}
+		return nil
 	}
 	var out []DeclChange
 	for _, spec := range d.Specs {

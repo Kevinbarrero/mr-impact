@@ -6,12 +6,23 @@
 |---|---|---|---|---|
 | 🔴 | `app.Greet` | body | 1 | not reached |
 
+**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
+
 ```mermaid
-graph RL
+flowchart RL
   n0["🔴 app.Greet"]:::red
   n1["app.Serve"]
   n1 --> n0
+  subgraph legend ["Legend"]
+    direction LR
+    lr["🔴 changed, not tested"]:::red
+    ly["🟡 partly tested / branch removed"]:::yellow
+    lg["🟢 changed, tested"]:::green
+    lc["caller, not changed"]
+  end
   classDef red fill:#fdd,stroke:#c00
+  classDef yellow fill:#ffd,stroke:#c90
+  classDef green fill:#dfd,stroke:#2a2
 ```
 
 <details><summary>All callers (1)</summary>
@@ -26,8 +37,9 @@ graph RL
 
 - Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
-- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers.
+- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.
+- Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
 - example.com/fx/ui: ui/ui.go:7:12: pattern dist: no matching files found
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered · mrimpact v0.1.0 · 0.0 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · mrimpact v0.2.0 · 0.0 s</sub>

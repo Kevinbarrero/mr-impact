@@ -64,7 +64,7 @@ func specModel() Model {
 			{Level: risk.Yellow, Display: "orders.Validate", Kind: "body", Callers: callers("orders", "orders.Validate", 2), CoverText: "40 % (2/5)"},
 			{Level: risk.Red, Display: "pricing.(*Calculator).Total", Kind: "signature (exported)", Callers: total, CoverText: "0 % (0/12)"},
 		},
-		Deleted:      []string{"legacy.OldTotal"},
+		Deleted:      []DeletedFunc{{Display: "legacy.OldTotal", File: "legacy/legacy.go"}},
 		TestsTouched: []string{"orders/validate_test.go"},
 		Coverage:     "coverprofile",
 		BaseSHA:      "a1b2c3d4e5f6",
@@ -82,7 +82,8 @@ func TestRenderSpecExample(t *testing.T) {
 		"| 🔴 | `pricing.(*Calculator).Total` | signature (exported) | 14 (4 pkgs) | 0 % (0/12) |",
 		"➖ Deleted: `legacy.OldTotal`",
 		"🧪 Tests touched in this MR: `orders/validate_test.go`",
-		"```mermaid\ngraph RL\n",
+		"```mermaid\nflowchart RL\n",
+		"**How to read the diagram:**",
 		"<details><summary>All callers (22)</summary>",
 		"<details><summary>⚠️ Limits of this analysis</summary>",
 		"<sub>Rules: " + risk.Legend + " · mrimpact v0.1.0 · 3.2 s</sub>",
@@ -108,8 +109,8 @@ func TestRenderNoGoChanges(t *testing.T) {
 
 func TestRenderNoFuncs(t *testing.T) {
 	out := Render(Model{
-		Deleted:      []string{"legacy.OldTotal"},
-		Decls:        []string{"const Max in limits/limits.go"},
+		Deleted:      []DeletedFunc{{Display: "legacy.OldTotal", File: "legacy/legacy.go"}},
+		Decls:        []Decl{{What: "const Max", File: "limits/limits.go"}},
 		TestsTouched: []string{"limits/limits_test.go"},
 		Coverage:     "static", BaseSHA: "abcdef0123", Version: "0.1.0", Duration: time.Second,
 	})
@@ -142,11 +143,15 @@ func TestRenderDiagramCap(t *testing.T) {
 	out := Render(m)
 	block := out[strings.Index(out, "```mermaid"):]
 	block = block[:strings.Index(block[10:], "```")+10]
-	if n := len(regexp.MustCompile(`(?m)^  n\d+\[`).FindAllString(block, -1)); n != 20 {
-		t.Errorf("nodes = %d, want 20", n)
+	// The function, 3 callers and one "+27 more callers" node.
+	if n := len(regexp.MustCompile(`(?m)^  n\d+[\[(]`).FindAllString(block, -1)); n != 5 {
+		t.Errorf("nodes = %d, want 5:\n%s", n, block)
 	}
-	if !strings.Contains(block, "%% +11 not shown") || !strings.Contains(out, "+11 nodes not shown") {
-		t.Errorf("missing not-shown markers")
+	if !strings.Contains(block, `n4(["+27 more callers"])`) || !strings.Contains(block, "n4 -.-> n0") {
+		t.Errorf("missing the +27 node:\n%s", block)
+	}
+	if !strings.Contains(block, "subgraph legend") {
+		t.Error("missing legend")
 	}
 	golden(t, "diagram_cap", out)
 }
@@ -189,17 +194,26 @@ func TestMermaidEscaping(t *testing.T) {
 	}
 }
 
-func TestDepth2Edge(t *testing.T) {
+// A registrant gets one dashed edge to the handler; the generic dispatcher
+// it registered through is not drawn. Plain depth-2 callers are not drawn.
+func TestRegistrantEdge(t *testing.T) {
 	m := Model{
 		Funcs: []FuncRow{{Level: risk.Red, Display: "a.T", Kind: "body", CoverText: "n/a", Callers: []callgraph.Caller{
+			{Display: "bus.(*Bus).Subscribe", Pkg: "bus", Depth: 1, Via: "a.T", Kind: callgraph.Dispatch},
+			{Display: "a.New", Pkg: "a", Depth: 2, Via: "bus.(*Bus).Subscribe", Kind: callgraph.Registers},
 			{Display: "b.One", Pkg: "b", Depth: 1, Via: "a.T"},
 			{Display: "c.Two", Pkg: "c", Depth: 2, Via: "b.One"},
 		}}},
 		Coverage: "static", Version: "0.1.0",
 	}
 	out := Render(m)
-	if !strings.Contains(out, "n2 --> n1") || !strings.Contains(out, "n1 --> n0") {
-		t.Errorf("edges wrong:\n%s", out)
+	for _, want := range []string{`n1["a.New"]`, `n1 -. "registers via Subscribe" .-> n0`, `n2["b.One"]`, "n2 --> n0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `["bus.(*Bus).Subscribe"]`) || strings.Contains(out, `["c.Two"]`) || strings.Contains(out, "more caller") {
+		t.Errorf("dispatcher, depth-2 caller or a +N node drawn:\n%s", out)
 	}
 }
 
@@ -223,5 +237,58 @@ func TestCallerDedupKeepsPackages(t *testing.T) {
 	}
 	if n := strings.Count(out, `["main.run"]`); n != 1 {
 		t.Errorf("diagram has %d main.run nodes, want 1:\n%s", n, out)
+	}
+}
+
+// A large removal is counted and collapsed, grouped by package directory.
+func TestRenderLargeDeletionCollapsed(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		DeletedFiles: []string{"a/x.go", "b/y.go"}}
+	for i := 0; i < 4; i++ {
+		m.Deleted = append(m.Deleted, DeletedFunc{Display: fmt.Sprintf("a.F%d", i), File: "a/x.go"})
+		m.Deleted = append(m.Deleted, DeletedFunc{Display: fmt.Sprintf("b.(*T).M%d", i), File: "b/y.go"})
+	}
+	for i := 0; i < 7; i++ {
+		m.Decls = append(m.Decls, Decl{What: fmt.Sprintf("var v%d", i), File: "a/z.go"})
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"➖ Deleted: 8 functions in 2 packages · 2 files removed\n",
+		"<details><summary>Deleted functions (8)</summary>",
+		"- `a` (4): `F0`, `F1`, `F2`, `F3`\n",
+		"- `b` (4): `(*T).M0`, `(*T).M1`, `(*T).M2`, `(*T).M3`\n",
+		"📝 Declarations changed: 7 in 1 file\n",
+		"- `a/z.go` (7): `var v0`",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderUnusedAndRegistered(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		Unused: []callgraph.Unused{
+			{Display: "x.lost", File: "x/x.go", Line: 3},
+			{Display: "x.helper", File: "x/x.go", Line: 9, TestOnly: true},
+		},
+		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.(*svc).handle", Kind: "body (branch removed)", CoverText: "no added lines · reached by test",
+			Callers:    []callgraph.Caller{{Display: "bus.Subscribe", Pkg: "ex.com/bus", Depth: 1, Via: "x.(*svc).handle"}},
+			Registered: []callgraph.Site{{File: "x/x.go", Line: 20, Call: "Subscribe(topic.A.EventTopic(), …)"}, {File: "x/y.go", Line: 4}}}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"🪦 **Now unused** — nothing reachable calls these after this MR (1):\n\n- `x.lost` — `x/x.go:3`\n",
+		"🧫 **Now only used by tests** — no production path reaches these after this MR (1):\n\n- `x.helper` — `x/x.go:9`\n",
+		"| Risk | Function | Change | Callers | Registered | Added-line coverage |",
+		"| 🟡 | `x.(*svc).handle` | body (branch removed) | 1 | `Subscribe(topic.A.EventTopic(), …)` +1 | no added lines · reached by test |",
+		"- registered: `x/y.go:4` — `x/y.go:4`",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "Now unused") > strings.Index(out, "| Risk |") {
+		t.Error("unused section must come before the table")
 	}
 }

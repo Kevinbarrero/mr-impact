@@ -7,24 +7,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/scanner"
+	"go/types"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
+	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
 	"gitlab.com/wh1t3hat/mrimpact/internal/coverage"
 	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
 	"gitlab.com/wh1t3hat/mrimpact/internal/load"
+	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/report"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
 	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
 )
 
 // Version is shown in the report footer as "mrimpact v<Version>".
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 const defaultDepth = 2
 
@@ -116,19 +121,42 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		return report.Model{}, err
 	}
 	m.TestsTouched = syms.TestsTouched
+	m.DeletedFiles = syms.DeletedFiles
 	for _, d := range syms.Decls {
-		m.Decls = append(m.Decls, d.What+" in "+d.File)
+		m.Decls = append(m.Decls, report.Decl{What: d.What, File: d.File})
 	}
 	var live []symbols.ChangedFunc
 	for _, f := range syms.Funcs {
 		if f.Kind == symbols.Deleted {
-			m.Deleted = append(m.Deleted, f.Display)
+			m.Deleted = append(m.Deleted, report.DeletedFunc{Display: f.Display, File: f.File})
 		} else {
 			live = append(live, f)
 		}
 	}
 
-	// 4. Load.
+	// 4. Load HEAD; the BASE revision is exported and loaded alongside, for
+	// comparisons that need both (registrations).
+	baseCh := make(chan baseResult, 1)
+	bctx, cancelBase := context.WithCancel(ctx)
+	deletedLines := map[string]map[int]bool{}
+	for _, c := range changes {
+		if c.IsTest || c.OldPath == "" || len(c.DeletedLines) == 0 {
+			continue
+		}
+		set := map[int]bool{}
+		for _, l := range c.DeletedLines {
+			set[l] = true
+		}
+		deletedLines[c.OldPath] = set
+	}
+	go func() { baseCh <- loadBase(bctx, cfg, baseSHA, deletedLines) }()
+	baseDone := false
+	defer func() { // early returns: stop the base load and let it clean up
+		cancelBase()
+		if !baseDone {
+			<-baseCh
+		}
+	}()
 	prog, err := load.Load(ctx, cfg.Dir, cfg.Tags)
 	if err != nil {
 		return report.Model{}, loadError{err}
@@ -208,18 +236,27 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 				continue
 			}
 		}
+		pkgName, _, _ := strings.Cut(f.Display, ".")
 		in := risk.Input{
 			Kind: f.Kind, Exported: f.Exported,
 			NonTestCallers: len(im.Callers), TestReached: im.TestReached,
+			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
+			BranchesRemoved: f.BranchesRemoved,
 		}
 		var cover string
 		switch {
 		case prof != nil:
 			in.HasProfile = true
 			in.Covered, in.Total = prof.Lines(f.File, f.AddedLines)
-			cover = "n/a"
-			if in.Total > 0 {
+			switch {
+			case in.Total > 0:
 				cover = fmt.Sprintf("%d %% (%d/%d)", in.Covered*100/in.Total, in.Covered, in.Total)
+			case graph == nil:
+				cover = "no added lines"
+			case im.TestReached:
+				cover = "no added lines · reached by test"
+			default:
+				cover = "no added lines · not reached"
 			}
 		case graph == nil:
 			cover = "n/a"
@@ -230,10 +267,232 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		m.Funcs = append(m.Funcs, report.FuncRow{
 			Level: risk.Assess(in), Display: f.Display, Kind: kindText(f),
-			Callers: im.Callers, CoverText: cover,
+			Callers: im.Callers, CoverText: cover, Registered: im.Registered,
 		})
 	}
+
+	// 9. Removed case values that still exist: those values now reach
+	// default, or no case at all.
+	m.RemovedCases = stillDeclared(prog, syms.RemovedCases)
+
+	// 10. Registrations removed and added.
+	b := <-baseCh
+	baseDone = true
+	if b.err != nil {
+		m.Warnings = append(m.Warnings, "Registrations not compared: the base revision could not be loaded.")
+	} else {
+		head := registrations.Find(prog.Packages, prog.ModulePath, prog.Rel)
+		m.RegRewired, m.RegRemoved, m.RegAdded = registrations.Pair(registrations.Diff(b.regs, head))
+	}
+
+	// What the removed code used: resolved with the BASE types when the base
+	// loaded, else guessed from syntax (by package and name).
+	names := map[string]bool{}
+	for r := range syms.DeletedRefs {
+		names[r.Name] = true
+	}
+	usedField := func(pkgPath, name string) bool { return names[name] }
+	usedFunc := func(f callgraph.FuncInfo) bool {
+		if prog.Generated[f.File] {
+			return names[f.Name] // x.Query(): the receiver's package is unknown
+		}
+		return syms.DeletedRefs[symbols.Ref{Import: f.Pkg, Name: f.Name}] ||
+			syms.DeletedRefs[symbols.Ref{Dir: dirOf(prog.ModulePath, f.Pkg), Name: f.Name}]
+	}
+	if b.err == nil {
+		usedField = func(pkgPath, name string) bool { return b.uses[use{Pkg: pkgPath, Name: name, Field: true}] }
+		usedFunc = func(f callgraph.FuncInfo) bool {
+			return b.uses[use{Pkg: f.Pkg, Recv: f.Recv, Name: f.Name}] ||
+				(f.Method && b.uses[use{Recv: anyRecv, Name: f.Name}])
+		}
+	}
+
+	// 11. Configuration fields the removed code used that nothing reads now.
+	m.UnusedConfig = configfields.Unused(prog.Packages, prog.Rel, usedField)
+
+	// 12. Functions the removed code used that nothing reachable uses any
+	// more, and what only they reached.
+	if graph != nil {
+		root := func(f callgraph.FuncInfo) bool {
+			// Exported methods may implement interfaces of dependencies
+			// (String, MarshalJSON, ServeHTTP); exported functions of an
+			// importable package may be called from another module. Not so
+			// for generated code: it is API only if something uses it.
+			exported := ast.IsExported(f.Name)
+			return exported && (f.Method || importable(f.Pkg, f.PkgName)) && !prog.Generated[f.File]
+		}
+		required := interfaceMethods(prog)
+		for _, u := range graph.Dead(root, usedFunc) {
+			switch {
+			case isProtobuf(u.File):
+			case required(u):
+				// It implements a method an interface still declares (e.g. a
+				// mock): removing it alone would not compile.
+			case !prog.Generated[u.File]:
+				m.Unused = append(m.Unused, u)
+			case !u.TestOnly: // mocks are generated and used by tests only
+				m.UnusedGenerated = append(m.UnusedGenerated, u)
+			}
+		}
+	}
 	return m, nil
+}
+
+// interfaceMethods returns a predicate reporting whether a dead method
+// implements a method of an interface declared in the module, so it is
+// required by that interface.
+func interfaceMethods(prog *load.Program) func(callgraph.Unused) bool {
+	byPath := map[string]*types.Package{}
+	var ifaces []*types.Interface
+	for _, p := range prog.Packages {
+		if p.Types == nil || byPath[p.PkgPath] != nil {
+			continue
+		}
+		byPath[p.PkgPath] = p.Types
+		for _, name := range p.Types.Scope().Names() {
+			if tn, ok := p.Types.Scope().Lookup(name).(*types.TypeName); ok {
+				// A generated interface (sqlc's Querier) lists everything
+				// generated beside it: it requires nothing.
+				if f, ok := prog.Rel(prog.Fset.Position(tn.Pos()).Filename); ok && prog.Generated[f] {
+					continue
+				}
+				if it, ok := tn.Type().Underlying().(*types.Interface); ok && it.NumMethods() > 0 {
+					ifaces = append(ifaces, it)
+				}
+			}
+		}
+	}
+	return func(u callgraph.Unused) bool {
+		// Display "pkg.(*T).M" or "pkg.T.M": a method has two dots.
+		rest, ok := strings.CutPrefix(u.Display, strings.SplitN(u.Display, ".", 2)[0]+".")
+		if !ok || !strings.Contains(rest, ".") {
+			return false
+		}
+		i := strings.LastIndex(rest, ".")
+		recv, method := strings.Trim(rest[:i], "(*)"), rest[i+1:]
+		if j := strings.Index(recv, "["); j >= 0 {
+			recv = recv[:j]
+		}
+		pkg := byPath[u.Pkg]
+		if pkg == nil {
+			return false
+		}
+		tn, ok := pkg.Scope().Lookup(recv).(*types.TypeName)
+		if !ok {
+			return false
+		}
+		for _, it := range ifaces {
+			if !hasMethod(it, method) {
+				continue
+			}
+			if types.Implements(tn.Type(), it) || types.Implements(types.NewPointer(tn.Type()), it) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func hasMethod(it *types.Interface, name string) bool {
+	for i := range it.NumMethods() {
+		if it.Method(i).Name() == name {
+			return true
+		}
+	}
+	return false
+}
+
+// importable reports whether another module can import the package: not a
+// main package and not under an internal/ directory.
+func importable(pkgPath, pkgName string) bool {
+	if pkgName == "main" {
+		return false
+	}
+	for _, seg := range strings.Split(pkgPath, "/") {
+		if seg == "internal" {
+			return false
+		}
+	}
+	return true
+}
+
+// dirOf maps an import path of module mod to its repo-relative dir; "" for
+// packages of other modules.
+func dirOf(mod, pkgPath string) string {
+	switch {
+	case pkgPath == mod:
+		return "."
+	case strings.HasPrefix(pkgPath, mod+"/"):
+		return pkgPath[len(mod)+1:]
+	}
+	return ""
+}
+
+// pkgPathOf returns the import path of the package holding repo-relative
+// file, under module path mod.
+func pkgPathOf(mod, file string) string {
+	if dir := path.Dir(file); dir != "." {
+		return mod + "/" + dir
+	}
+	return mod
+}
+
+// stillDeclared keeps the removed cases whose constant or type is still
+// declared at HEAD.
+func stillDeclared(prog *load.Program, cs []symbols.RemovedCase) []report.RemovedCase {
+	byPath := map[string]*types.Package{}
+	for _, p := range prog.Packages {
+		if p.Types != nil && byPath[p.PkgPath] == nil {
+			byPath[p.PkgPath] = p.Types
+		}
+	}
+	var out []report.RemovedCase
+	for _, c := range cs {
+		pkgPath := c.Ref.Import
+		if pkgPath == "" {
+			pkgPath = pkgPathOf(prog.ModulePath, c.Ref.Dir+"/x.go")
+		}
+		pkg := byPath[pkgPath]
+		if pkg == nil {
+			continue
+		}
+		switch pkg.Scope().Lookup(c.Ref.Name).(type) {
+		case *types.Const, *types.TypeName:
+			out = append(out, report.RemovedCase{Func: c.Func, File: c.File, Line: c.Line, Case: c.Case, HasDefault: c.HasDefault})
+		}
+	}
+	return out
+}
+
+type baseResult struct {
+	regs []registrations.Registration
+	uses map[use]bool // what the deleted lines name
+	err  error
+}
+
+// loadBase exports the base revision into a temporary directory (the
+// repository is not touched), type-checks it and finds its registrations.
+func loadBase(ctx context.Context, cfg Config, baseSHA string, deletedLines map[string]map[int]bool) baseResult {
+	tmp, err := os.MkdirTemp("", "mrimpact-base-*")
+	if err != nil {
+		return baseResult{err: err}
+	}
+	defer os.RemoveAll(tmp)
+	if err := diff.Export(ctx, cfg.Dir, baseSHA, tmp); err != nil {
+		return baseResult{err: err}
+	}
+	pkgs, rel, err := load.Syntax(ctx, tmp, cfg.Tags)
+	if err != nil {
+		return baseResult{err: err}
+	}
+	mod := ""
+	for _, p := range pkgs {
+		if p.Module != nil {
+			mod = p.Module.Path
+			break
+		}
+	}
+	return baseResult{regs: registrations.Find(pkgs, mod, rel), uses: deletedUses(pkgs, rel, deletedLines)}
 }
 
 // loadError marks a load.Load failure (nothing loaded) so Run can choose its
@@ -255,10 +514,14 @@ func failureText(err error, isLoad bool) string {
 }
 
 func kindText(f symbols.ChangedFunc) string {
+	k := string(f.Kind)
 	if f.Kind == symbols.Signature && f.Exported {
-		return "signature (exported)"
+		k = "signature (exported)"
 	}
-	return string(f.Kind)
+	if f.BranchesRemoved {
+		k += " (branch removed)"
+	}
+	return k
 }
 
 func containsAny(files []string, set map[string]bool) bool {

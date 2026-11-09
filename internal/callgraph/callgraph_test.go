@@ -3,6 +3,7 @@ package callgraph
 import (
 	"context"
 	"errors"
+	"go/ast"
 	"os"
 	"path/filepath"
 	"strings"
@@ -261,5 +262,73 @@ func TestGenericClosureCaller(t *testing.T) {
 	}
 	if !im.TestReached || im.TestCallers != 1 {
 		t.Errorf("TestReached=%v TestCallers=%d, want true, 1", im.TestReached, im.TestCallers)
+	}
+}
+
+func displays(cs []Caller) []string {
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Display)
+	}
+	return out
+}
+
+// Through an event-bus style dispatcher, only the code that registered the
+// handler is a depth-2 caller, not everything else that subscribes.
+func TestDispatcherNarrowedToRegistrant(t *testing.T) {
+	_, g := loadFixture(t)
+	im := g.Impact("wire/wire.go", lineOf(t, fixture, "wire/wire.go", "func (a *A) handle"), 3)
+	got := strings.Join(displays(im.Callers), ", ")
+	want := "bus.(*Bus).Subscribe, wire.NewA, wire.Main"
+	if got != want {
+		t.Errorf("callers = %s, want %s", got, want)
+	}
+	if len(im.Callers) == 3 && (im.Callers[0].Kind != Dispatch || im.Callers[1].Kind != Registers || im.Callers[2].Kind != Calls) {
+		t.Errorf("kinds = %q %q %q, want dispatch, registers, calls", im.Callers[0].Kind, im.Callers[1].Kind, im.Callers[2].Kind)
+	}
+	if len(im.Registered) != 1 {
+		t.Fatalf("Registered = %+v, want 1", im.Registered)
+	}
+	r := im.Registered[0]
+	if r.File != "wire/wire.go" || r.Line != lineOf(t, fixture, "wire/wire.go", `b.Subscribe("topic.a"`) ||
+		r.Call != `Subscribe("topic.a", …)` {
+		t.Errorf("Registered[0] = %+v", r)
+	}
+}
+
+// Callers of a closure are not callers of the function that created it.
+func TestClosureCallersNotAttributedToCreator(t *testing.T) {
+	_, g := loadFixture(t)
+	im := g.Impact("wire/wire.go", lineOf(t, fixture, "wire/wire.go", "func NewSvc"), 2)
+	if got := strings.Join(displays(im.Callers), ", "); got != "wire.Main" {
+		t.Errorf("NewSvc callers = %s, want wire.Main", got)
+	}
+	im = g.Impact("wire/wire.go", lineOf(t, fixture, "wire/wire.go", "func Save"), 2)
+	if got := strings.Join(displays(im.Callers), ", "); got != "wire.Main" {
+		t.Errorf("Save callers = %s, want wire.Main (not bus.RunTx)", got)
+	}
+}
+
+// Dead reports unreachable seeded functions, what only they reached
+// (Via), and marks what tests still reach.
+func TestDead(t *testing.T) {
+	_, g := loadFixture(t)
+	seeds := map[string]bool{"lost": true, "testOnly": true, "gone": true, "registered": true, "kept": true, "String": true}
+	root := func(f FuncInfo) bool { return ast.IsExported(f.Name) }
+	seed := func(f FuncInfo) bool { return f.Pkg == "example.com/iface/dead" && seeds[f.Name] }
+	var got []string
+	for _, u := range g.Dead(root, seed) {
+		s := u.Display
+		if u.TestOnly {
+			s += " (tests)"
+		}
+		if u.Via != "" {
+			s += " via " + u.Via
+		}
+		got = append(got, s)
+	}
+	want := "dead.lost, dead.helper via dead.lost, dead.testOnly (tests), dead.t.gone"
+	if strings.Join(got, ", ") != want {
+		t.Errorf("Dead = %s\nwant   %s", strings.Join(got, ", "), want)
 	}
 }

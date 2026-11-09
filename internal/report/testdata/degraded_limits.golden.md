@@ -10,54 +10,51 @@
 | 🟢 | `httpapi.formatDate` | new | 1 | 100 % (4/4) |
 
 ➖ Deleted: `legacy.OldTotal`
+
 🧪 Tests touched in this MR: `orders/validate_test.go`
 
+**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
+
 ```mermaid
-graph RL
+flowchart RL
   n0["🔴 pricing.(*Calculator).Total"]:::red
   n1["billing.Generate"]
   n2["checkout.Handle"]
-  n3["🔴 orders.applyDiscount"]:::red
-  n4["reports.F00"]
-  n5["reports.F01"]
-  n6["reports.F02"]
-  n7["reports.F03"]
-  n8["reports.F04"]
-  n9["reports.F05"]
-  n10["reports.F06"]
-  n11["reports.F07"]
-  n12["reports.F08"]
-  n13["reports.F09"]
-  n14["reports.F10"]
-  n15["orders.Create"]
-  n16["orders.Import"]
-  n17["orders.Replay"]
-  n18["orders.Retry"]
-  n19["orders.Update"]
+  n3["reports.F00"]
+  n4(["+10 more callers"])
+  n5["🔴 orders.applyDiscount"]:::red
+  n6["orders.Create"]
+  n7["orders.Import"]
+  n8["orders.Replay"]
+  n9(["+2 more callers"])
+  n10["🟡 orders.Validate"]:::yellow
+  n11["orders.F00"]
+  n12["orders.F01"]
+  n13["🟢 httpapi.formatDate"]:::green
+  n14["httpapi.F00"]
   n1 --> n0
   n2 --> n0
   n3 --> n0
-  n4 --> n0
+  n4 -.-> n0
+  n6 --> n5
+  n7 --> n5
+  n8 --> n5
+  n9 -.-> n5
+  n11 --> n10
+  n12 --> n10
+  n14 --> n13
   n5 --> n0
-  n6 --> n0
-  n7 --> n0
-  n8 --> n0
-  n9 --> n0
-  n10 --> n0
-  n11 --> n0
-  n12 --> n0
-  n13 --> n0
-  n14 --> n0
-  n15 --> n3
-  n16 --> n3
-  n17 --> n3
-  n18 --> n3
-  n19 --> n3
+  subgraph legend ["Legend"]
+    direction LR
+    lr["🔴 changed, not tested"]:::red
+    ly["🟡 partly tested / branch removed"]:::yellow
+    lg["🟢 changed, tested"]:::green
+    lc["caller, not changed"]
+  end
   classDef red fill:#fdd,stroke:#c00
-  %% +5 not shown
+  classDef yellow fill:#ffd,stroke:#c90
+  classDef green fill:#dfd,stroke:#2a2
 ```
-
-+5 nodes not shown
 
 <details><summary>All callers (22)</summary>
 
@@ -84,10 +81,11 @@ graph RL
 
 - Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
-- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers.
+- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.
+- Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
 - Not analyzed: orders.Special (build tags)
 - Not analyzed: pkg/x (load error)
 - coverage profile is older than the base commit
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered · mrimpact v0.1.0 · 3.2 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · mrimpact v0.1.0 · 3.2 s</sub>

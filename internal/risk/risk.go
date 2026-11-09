@@ -35,10 +35,15 @@ type Input struct {
 	HasProfile     bool // coverprofile in use
 	Covered, Total int  // added-line coverage (only meaningful if HasProfile)
 	TestReached    bool
+	// Importable: other modules can import the package (not main, not
+	// under internal/). Only then can an exported signature change break
+	// callers the compiler doesn't see.
+	Importable      bool
+	BranchesRemoved bool // control flow removed: never rated green
 }
 
 // Legend explains the rating in the report footer.
-const Legend = "🔴 untested with callers, or exported signature changed · 🟡 partial, or untested with no callers · 🟢 covered"
+const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test)"
 
 // Assess rates a changed function. It must not be called for symbols.Deleted,
 // which has no code left to rate; doing so panics.
@@ -56,13 +61,15 @@ func Assess(in Input) Level {
 	}
 
 	switch {
-	case in.Exported && in.Kind == symbols.Signature:
+	case in.Exported && in.Kind == symbols.Signature && in.Importable:
 		return Red
 	case untested && in.NonTestCallers >= 1:
 		return Red
 	case partial:
 		return Yellow
 	case untested && in.NonTestCallers == 0:
+		return Yellow
+	case in.BranchesRemoved:
 		return Yellow
 	default:
 		return Green
