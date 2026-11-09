@@ -65,7 +65,7 @@ func Assess(in Input) Level {
 	var untested, partial bool
 	// sensitiveUntested ignores cross-package reach on purpose.
 	sensitiveUntested := in.Sensitive &&
-		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!(in.HasProfile && in.Total > 0) && !in.TestReached))
+		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!in.HasProfile && !in.TestReached))
 	if in.HasProfile && in.Total > 0 {
 		untested = in.Covered == 0
 		partial = in.Covered > 0 && in.Covered < in.Total
