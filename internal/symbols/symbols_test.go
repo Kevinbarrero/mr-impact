@@ -350,3 +350,16 @@ func TestRemovedCases(t *testing.T) {
 		t.Errorf("RemovedCases =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+func TestFind_SetsWiring(t *testing.T) {
+	base := "package p\n\nfunc setup() *S {\n\ts := NewS()\n\treturn s\n}\n\nfunc logic(n int) int {\n\tif n > 0 {\n\t\treturn n\n\t}\n\treturn 0\n}\n"
+	head := "package p\n\nfunc setup() *S {\n\ts := NewS()\n\ts.Init()\n\treturn s\n}\n\nfunc logic(n int) int {\n\tif n > 1 {\n\t\treturn n\n\t}\n\treturn 0\n}\n"
+	r := run(t, []diff.FileChange{mod("p.go", []int{5, 10}, []int{9})}, files{"p.go": head}, files{"p.go": base})
+	got := map[string]bool{}
+	for _, f := range r.Funcs {
+		got[f.Display] = f.Wiring
+	}
+	if len(got) != 2 || !got["p.setup"] || got["p.logic"] {
+		t.Fatalf("%+v", r.Funcs)
+	}
+}
