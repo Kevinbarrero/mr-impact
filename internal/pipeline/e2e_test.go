@@ -13,9 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
 	"gitlab.com/wh1t3hat/mrimpact/internal/report"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
 	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
 )
 
@@ -28,6 +30,7 @@ func TestE2E(t *testing.T) {
 	cases := []struct {
 		name     string
 		profiles []string
+		check    func(t *testing.T, m report.Model) // extra assertions beyond the golden
 	}{
 		{name: "interface_call"},
 		{name: "exported_signature"},
@@ -43,6 +46,8 @@ func TestE2E(t *testing.T) {
 		{name: "cross_pkg_coverage", profiles: []string{"coverage.out"}},
 		{name: "wiring"},
 		{name: "new_subtree", profiles: []string{"coverage.out"}},
+		{name: "sensitive_zero_config", check: checkSensitiveZeroConfig},
+		{name: "config_file", check: checkConfigFile},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,10 +55,20 @@ func TestE2E(t *testing.T) {
 			dir := filepath.Join("..", "..", "testdata", "e2e", tc.name)
 			repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
 			now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+			// As main does: the optional .mrimpact.yml at the module root.
+			fc, err := config.Load(repo, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			table, err := sensitive.NewTable(fc.SensitiveAdd, fc.SensitiveRemove)
+			if err != nil {
+				t.Fatal(err)
+			}
 			m, err := Run(context.Background(), Config{
 				Dir: repo, Base: baseSHA, Head: "HEAD", Depth: 2,
 				CoverProfiles: tc.profiles, Timeout: 5 * time.Minute,
-				Now: func() time.Time { return now },
+				Now:       func() time.Time { return now },
+				Sensitive: &table, Critical: fc.Critical,
 			})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -62,6 +77,9 @@ func TestE2E(t *testing.T) {
 				t.Errorf("BaseSHA = %q, want %q", m.BaseSHA, baseSHA)
 			}
 			checkCallers(t, filepath.Join(dir, "expected_callers.txt"), m)
+			if tc.check != nil {
+				tc.check(t, m)
+			}
 
 			m.BaseSHA = fixedBase
 			got := report.Render(m)
@@ -80,6 +98,60 @@ func TestE2E(t *testing.T) {
 				t.Errorf("report mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", tc.name, got, want)
 			}
 		})
+	}
+}
+
+func rowOf(t *testing.T, m report.Model, display string) report.FuncRow {
+	t.Helper()
+	for _, r := range m.Funcs {
+		if r.Display == display {
+			return r
+		}
+	}
+	t.Fatalf("no row %s", display)
+	return report.FuncRow{}
+}
+
+func sensitiveOf(m report.Model, display string) (report.SensitiveRow, bool) {
+	for _, r := range m.Sensitive {
+		if r.Display == display {
+			return r, true
+		}
+	}
+	return report.SensitiveRow{}, false
+}
+
+func checkSensitiveZeroConfig(t *testing.T, m report.Model) {
+	if r := rowOf(t, m, "run.Exec"); r.Level != risk.Red || r.Kind != "new · sensitive" {
+		t.Errorf("run.Exec = %v %q, want red \"new · sensitive\"", r.Level, r.Kind)
+	}
+	if s, ok := sensitiveOf(m, "run.Exec"); !ok || !s.Untested || s.APIs[0] != "os/exec.Command" {
+		t.Errorf("run.Exec section row = %+v, %v", s, ok)
+	}
+	if r := rowOf(t, m, "store.Save"); r.Level != risk.Green || r.Kind != "body · sensitive" {
+		t.Errorf("store.Save = %v %q, want green \"body · sensitive\"", r.Level, r.Kind)
+	}
+	if s, ok := sensitiveOf(m, "store.Save"); !ok || s.Untested || strings.Join(s.APIs, ",") != "database/sql.(*DB).ExecContext" {
+		t.Errorf("store.Save section row = %+v, %v", s, ok)
+	}
+	if _, ok := sensitiveOf(m, "util.Label"); ok || rowOf(t, m, "util.Label").Kind != "body" {
+		t.Error("util.Label must not be sensitive")
+	}
+	out := report.Render(m)
+	if i, j := strings.Index(out, "`run.Exec` —"), strings.Index(out, "`store.Save` —"); i < 0 || j < i {
+		t.Errorf("run.Exec must be listed first in the section:\n%s", out)
+	}
+}
+
+func checkConfigFile(t *testing.T, m report.Model) {
+	if r := rowOf(t, m, "pay.Settle"); r.Level != risk.Red || r.Kind != "body · sensitive" {
+		t.Errorf("pay.Settle = %v %q, want red \"body · sensitive\"", r.Level, r.Kind)
+	}
+	if s, ok := sensitiveOf(m, "pay.Settle"); !ok || s.Critical != "internal/pay/..." || len(s.APIs) != 0 {
+		t.Errorf("pay.Settle section row = %+v, %v", s, ok)
+	}
+	if _, ok := sensitiveOf(m, "describe.Name"); ok || strings.Contains(rowOf(t, m, "describe.Name").Kind, "sensitive") {
+		t.Error("describe.Name calls only reflect, which the config removed: must not be sensitive")
 	}
 }
 
@@ -343,4 +415,17 @@ func TestShallowFetchErrorDoesNotLeakIntoNote(t *testing.T) {
 		t.Fatalf("err = %v, want ErrShallow", err)
 	}
 	assertNoLeak(t, m, err, diff.ErrShallow.Error())
+}
+
+// A library caller that sets no table gets the default one.
+func TestRun_NilSensitiveUsesDefaults(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "sensitive_zero_config")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := rowOf(t, m, "run.Exec"); r.Level != risk.Red || r.Kind != "new · sensitive" {
+		t.Errorf("run.Exec = %v %q, want red \"new · sensitive\"", r.Level, r.Kind)
+	}
 }

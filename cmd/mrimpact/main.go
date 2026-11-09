@@ -14,10 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/gitlab"
 	"gitlab.com/wh1t3hat/mrimpact/internal/pipeline"
 	"gitlab.com/wh1t3hat/mrimpact/internal/report"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
 )
 
 // newClient builds the GitLab client; tests replace it to inject a no-op Sleep.
@@ -52,6 +54,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	skipEmpty := fs.Bool("skip-empty", false, "do not post when there are no Go changes")
 	noPost := fs.Bool("no-post", false, "shadow mode: never post to GitLab")
 	out := fs.String("out", "mrimpact-report.md", "write the note to this file")
+	configPath := fs.String("config", "", "config file (default: .mrimpact.yml in --dir, optional)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -87,9 +90,22 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		mrIID = n
 	}
 
+	// Config errors stop the run before any note is written or posted.
+	fileCfg, err := config.Load(*dir, *configPath)
+	var table sensitive.Table
+	if err == nil {
+		table, err = sensitive.NewTable(fileCfg.SensitiveAdd, fileCfg.SensitiveRemove)
+	}
+	if err != nil {
+		msg := strings.TrimPrefix(err.Error(), config.ErrConfig.Error()+": ")
+		warnf("config: %s", strings.Join(strings.Fields(msg), " "))
+		return 2
+	}
+
 	cfg := pipeline.Config{
 		Dir: *dir, Base: *base, Head: *head, Depth: *depth,
 		CoverProfiles: profiles, Timeout: *timeout,
+		Sensitive: &table, Critical: fileCfg.Critical,
 	}
 	for _, t := range strings.Split(*tags, ",") {
 		if t = strings.TrimSpace(t); t != "" {

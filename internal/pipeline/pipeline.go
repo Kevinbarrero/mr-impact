@@ -25,6 +25,7 @@ import (
 	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
 	"gitlab.com/wh1t3hat/mrimpact/internal/report"
 	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
 	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
 )
 
@@ -41,6 +42,8 @@ type Config struct {
 	Tags          []string         // build tags for loading
 	Timeout       time.Duration    // call graph budget; 0 means none
 	Now           func() time.Time // nil → time.Now; e2e pins it so Duration renders "0.0 s"
+	Sensitive     *sensitive.Table // nil → the default table (sensitive.NewTable(nil, nil))
+	Critical      []string         // package globs whose functions are sensitive
 }
 
 // Run analyzes Base..Head in cfg.Dir. err is non-nil only for internal
@@ -222,6 +225,15 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 	}
 
+	table := cfg.Sensitive
+	if table == nil {
+		t, err := sensitive.NewTable(nil, nil)
+		if err != nil {
+			return report.Model{}, err
+		}
+		table = &t
+	}
+
 	// 6 + 8. Impact and risk per function.
 	var rated []ratedFunc
 	for _, f := range live {
@@ -258,6 +270,17 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			}
 		}
 		in.Wiring = f.Wiring
+		// Sensitive: a table API in its body, or a critical package. A
+		// declaration the program does not hold is not sensitive.
+		var apis []string
+		critical := ""
+		if fd, info, declPkg, ok := prog.FuncDecl(f.File, f.StartLine); ok {
+			apis = table.Calls(fd, info)
+			if g, ok := sensitive.Critical(declPkg, prog.ModulePath, cfg.Critical); ok {
+				critical = g
+			}
+		}
+		in.Sensitive = len(apis) > 0 || critical != ""
 		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
 		var callers1 []string
 		for _, c := range im.Callers {
@@ -265,9 +288,17 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 				callers1 = append(callers1, c.Display+"\x00"+c.Pkg)
 			}
 		}
+		level := risk.Assess(in)
+		if in.Sensitive {
+			// Its own row, also when folded into a group later.
+			m.Sensitive = append(m.Sensitive, report.SensitiveRow{
+				Level: level, Display: f.Display, APIs: apis, Critical: critical,
+				CoverText: cover, Untested: in.SensitiveUntested(),
+			})
+		}
 		rated = append(rated, ratedFunc{
 			Row: report.FuncRow{
-				Level: risk.Assess(in), Display: f.Display, Kind: kindText(f),
+				Level: level, Display: f.Display, Kind: kindText(f, in.Sensitive),
 				Callers: im.Callers, CoverText: cover, Registered: im.Registered, File: f.File,
 			},
 			Key: f.Display + "\x00" + pkgPath, New: f.Kind == symbols.New, In: in,
@@ -525,7 +556,7 @@ func failureText(err error, isLoad bool) string {
 	}
 }
 
-func kindText(f symbols.ChangedFunc) string {
+func kindText(f symbols.ChangedFunc, isSensitive bool) string {
 	k := string(f.Kind)
 	if f.Kind == symbols.Signature && f.Exported {
 		k = "signature (exported)"
@@ -535,6 +566,9 @@ func kindText(f symbols.ChangedFunc) string {
 	}
 	if f.Wiring {
 		k += " · wiring"
+	}
+	if isSensitive {
+		k += " · sensitive"
 	}
 	return k
 }

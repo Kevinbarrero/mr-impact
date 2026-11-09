@@ -55,6 +55,14 @@ type Input struct {
 // Legend explains the rating in the report footer.
 const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 
+// SensitiveUntested reports the untested-sensitive rule: a sensitive
+// function whose added lines are 0/N (N > 0) with a profile, or that no test
+// reaches without one. It ignores cross-package reach on purpose.
+func (in Input) SensitiveUntested() bool {
+	return in.Sensitive &&
+		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!in.HasProfile && !in.TestReached))
+}
+
 // Assess rates a changed function. It must not be called for symbols.Deleted,
 // which has no code left to rate; doing so panics.
 func Assess(in Input) Level {
@@ -63,9 +71,7 @@ func Assess(in Input) Level {
 	}
 
 	var untested, partial bool
-	// sensitiveUntested ignores cross-package reach on purpose.
-	sensitiveUntested := in.Sensitive &&
-		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!in.HasProfile && !in.TestReached))
+	sensitiveUntested := in.SensitiveUntested()
 	if in.HasProfile && in.Total > 0 {
 		untested = in.Covered == 0
 		partial = in.Covered > 0 && in.Covered < in.Total

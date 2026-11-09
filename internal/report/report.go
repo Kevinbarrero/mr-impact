@@ -60,9 +60,21 @@ type Decl struct {
 	File string
 }
 
+// SensitiveRow is one changed function that touches a sensitive API or lies
+// in a critical package.
+type SensitiveRow struct {
+	Level     risk.Level
+	Display   string
+	APIs      []string // matched APIs, first-occurrence order
+	Critical  string   // the critical glob it matched; "" if none
+	CoverText string
+	Untested  bool // the untested-sensitive rule rated it red; listed first, not shown
+}
+
 // Model is everything the note shows.
 type Model struct {
 	Funcs        []FuncRow          // unsorted; Render sorts by Level desc, len(Callers) desc, Display
+	Sensitive    []SensitiveRow     // unsorted; Render lists untested first, then by Display
 	RemovedCases []RemovedCase      // behaviour changes: first in the note
 	Unused       []callgraph.Unused // functions this MR left without callers
 	// UnusedGenerated: generated functions (sqlc, protobuf, mocks) nothing
@@ -148,6 +160,7 @@ func Render(m Model) string {
 	writeRegistrations(&b, "🔌 **Registrations removed, no replacement** — these calls no longer get a handler; check each is intended", "base", m.RegRemoved)
 	writeRewired(&b, m.RegRewired)
 	writeRegistrations(&b, "🔌 **Registrations added**", "head", m.RegAdded)
+	writeSensitive(&b, m.Sensitive)
 
 	// With no rated functions there is nothing for the table, diagram or
 	// caller list to show; only the context lines and limits remain.
@@ -352,6 +365,37 @@ func writeRegistrations(b *strings.Builder, title, side string, rs []registratio
 		b.WriteString("\n")
 	}
 	b.WriteString("</details>\n\n")
+}
+
+// writeSensitive lists every sensitive changed function, untested first,
+// then by Display.
+func writeSensitive(b *strings.Builder, rs []SensitiveRow) {
+	if len(rs) == 0 {
+		return
+	}
+	rs = append([]SensitiveRow(nil), rs...)
+	sort.SliceStable(rs, func(i, j int) bool {
+		if rs[i].Untested != rs[j].Untested {
+			return rs[i].Untested
+		}
+		return rs[i].Display < rs[j].Display
+	})
+	fmt.Fprintf(b, "🔐 **Sensitive code changed** (%d):\n\n", len(rs))
+	for _, r := range rs {
+		var parts []string
+		if len(r.APIs) > 0 {
+			apis := strings.Join(r.APIs[:min(3, len(r.APIs))], ", ")
+			if len(r.APIs) > 3 {
+				apis += fmt.Sprintf(" +%d", len(r.APIs)-3)
+			}
+			parts = append(parts, apis)
+		}
+		if r.Critical != "" {
+			parts = append(parts, "critical: "+r.Critical)
+		}
+		fmt.Fprintf(b, "- %s `%s` — %s · %s\n", r.Level.Emoji(), r.Display, strings.Join(parts, ", "), r.CoverText)
+	}
+	b.WriteString("\n")
 }
 
 func writeRemovedCases(b *strings.Builder, cs []RemovedCase) {
