@@ -405,9 +405,9 @@ func TestRender_EntryPointsColumn(t *testing.T) {
 	out := Render(with)
 	for _, want := range []string{
 		"| Risk | Function | Change | Callers | Entry points | Added-line coverage |",
-		"| 🟡 | `x.A` | body | 0 | GET(\"/x\", …), api x.Do +1 | n/a |",
+		"| 🟡 | `x.A` | body | 0 | `GET(\"/x\", …)`, api `x.Do` +1 | n/a |",
 		"| 🟡 | `x.B` | body | 0 | — | n/a |",
-		`| GET("/a\|b", …), init | n/a |`,
+		"| `GET(\"/a\\|b\", …)`, init | n/a |",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
@@ -431,7 +431,7 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 			{Kind: "main", Display: "main.main"}}},
 	}
 	out := Render(m)
-	for _, want := range []string{"| `x.A` | body | 0 | api x.Do, init | n/a |", "| `x.B` | body | 0 | — | n/a |"} {
+	for _, want := range []string{"| `x.A` | body | 0 | api `x.Do`, init | n/a |", "| `x.B` | body | 0 | — | n/a |"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
@@ -439,7 +439,7 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 	// One shown row not reached from main: main stays everywhere.
 	m.Funcs = append(m.Funcs, FuncRow{Level: risk.Yellow, Display: "x.C", Kind: "body", CoverText: "n/a"})
 	out = Render(m)
-	for _, want := range []string{"| `x.A` | body | 0 | api x.Do, main +1 | n/a |", "| `x.B` | body | 0 | main | n/a |"} {
+	for _, want := range []string{"| `x.A` | body | 0 | api `x.Do`, main +1 | n/a |", "| `x.B` | body | 0 | main | n/a |"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
@@ -484,5 +484,26 @@ func TestRender_ConfigLine(t *testing.T) {
 				t.Errorf("want line %q after the header in\n%s", c.want, out)
 			}
 		})
+	}
+}
+
+// Registered and api entries render as code spans: *, _ and < stay literal;
+// a backtick takes a double-backtick span; | is still escaped.
+func TestRender_EntryCodeSpans(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "registered", Display: "Handle(`a|b`, …)"}, {Kind: "api", Display: "x.(*T).M"}}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "registered", Display: "Use(*_<x>, …)"}, {Kind: "init", Display: "x.init"}}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"| `x.A` | body | 0 | `` Handle(`a\\|b`, …) ``, api `x.(*T).M` | n/a |",
+		"| `x.B` | body | 0 | `Use(*_<x>, …)`, init | n/a |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
 	}
 }

@@ -296,3 +296,14 @@ func TestGroup_CycleFeedingSmallerMember(t *testing.T) {
 		t.Errorf("folded, groups = %d, %d, want 2, 1", folded, groups)
 	}
 }
+
+// A group whose entry is sensitive keeps the suffix on its row.
+func TestGroup_SensitiveEntryKeepsKind(t *testing.T) {
+	a := rf("p.A", 10, 10, "p.Old")
+	a.In.Sensitive = true
+	a.Row.Kind = "new · sensitive"
+	rows, _, _ := group([]ratedFunc{a, rf("p.h", 5, 5, "p.A")}, "m")
+	if len(rows) != 1 || rows[0].Kind != "new · +1 · sensitive" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}

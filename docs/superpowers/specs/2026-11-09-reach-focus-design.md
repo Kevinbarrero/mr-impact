@@ -58,7 +58,7 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
   - is not softened by cross-package reach, because a cross-package test that reaches the function does not prove its added lines ran;
   - leaves partly tested sensitive functions as they are (🟡), listed in the section below;
   - leaves a sensitive function with no added lines (lines only removed) rated by today's rules.
-- **Groups:** a sensitive member's own rating decides whether it is folded, per R7 of sub-project A. An untested sensitive member is 🔴 and stays its own row.
+- **Groups:** a sensitive member's own rating decides whether it is folded, per R7 of sub-project A. An untested sensitive member is 🔴 and stays its own row. A group row whose entry function is sensitive keeps the suffix: `new · +N · sensitive`.
 - **Section** "🔐 **Sensitive code changed**", placed after the registration sections and before the table, listing every sensitive changed function, untested first, then by Display: `- 🔴 \`pkg.F\` — os/exec.Command, database/sql.(*Tx).Exec · 0 % (0/7)`. Up to 3 matched APIs are shown, then ` +N`. A function marked only by `critical` shows `critical: <glob>`.
 - **Legend:** gains `· sensitive and untested 🔴`.
 
@@ -76,7 +76,7 @@ The target itself counts if it qualifies. Test functions are never entry points.
 
 ### Effect
 
-- **Table:** a new column **Entry points** shows the first 2 as `GET("/x", …)`, `api orders.Create`, `main`, then ` +N`, or `—` when none. When no row has any entry point, the column is omitted, as `Registered` already is. When every row the table shows has `main` among its entry points, `main` tells them apart in no way and is left out of every cell (and of ` +N`); a cell left empty renders `—`.
+- **Table:** a new column **Entry points** shows the first 2 as `GET("/x", …)`, `api orders.Create`, `main`, then ` +N`, or `—` when none. A registration and an `api` function render as code spans (a double-backtick span when the text holds a backtick), `|` escaped, so `*`, `_` and `<` stay literal. When no row has any entry point, the column is omitted, as `Registered` already is. When every row the table shows has `main` among its entry points, `main` tells them apart in no way and is left out of every cell (and of ` +N`); a cell left empty renders `—`.
 - **Rating:** unchanged. Entry points are context only.
 - **Degraded call graph:** the column is omitted.
 - A registration that is not a call argument (no call text) shows its `file:line`, as the Registered column does; entries are deduplicated on that text.
@@ -106,6 +106,8 @@ sensitive:
   - `internal/x/...` matches the package and everything below it.
   - `internal/x/*` uses `path.Match` semantics on one segment.
   - A glob without the module prefix is joined to the module path.
+  - Globs are cleaned with `path.Clean`; a leading `./` is stripped and a trailing `/` accepted (`./internal/x/` reads as `internal/x`).
+  - A glob that matches no loaded package adds a warning to the note: `critical glob "<g>" matches no package`.
 
 - **Visibility.** The config is read from the head checkout. Whenever the effective config has `sensitive.remove` entries or `critical` globs, the note shows one line after the header block: `⚙️ .mrimpact.yml: critical <globs> · removes <patterns> · adds <patterns>` (empty parts omitted; `defaults` when none is left; with `--config` the line names the path as given). When the file differs between base and head (the base version is read with `git show`; a base without it is the empty config; an explicit `--config` outside the repository is not compared), the line also appears and ends ` — changed in this MR (MR removes from defaults: os/exec.*; …)`, listing per key what the MR added or dropped (`adds critical` / `drops critical`, `removes from defaults` / `restores defaults`, `adds` / `drops added`). A base file that does not parse reads ` — changed in this MR (base config unreadable)`; the base file never fails the run. Order and comments do not count as a change.
 

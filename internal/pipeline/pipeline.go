@@ -233,6 +233,20 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 	}
 
+	// A critical glob that matches no loaded package is most likely a typo.
+	for _, g := range cfg.Critical {
+		matched := false
+		for _, p := range prog.Packages {
+			if _, ok := sensitive.Critical(p.PkgPath, prog.ModulePath, []string{g}); ok {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			m.Warnings = append(m.Warnings, fmt.Sprintf("critical glob %q matches no package", g))
+		}
+	}
+
 	table := cfg.Sensitive
 	if table == nil {
 		t, err := sensitive.NewTable(nil, nil)
