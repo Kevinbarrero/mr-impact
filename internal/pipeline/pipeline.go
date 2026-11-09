@@ -282,6 +282,10 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		in.Sensitive = len(apis) > 0 || critical != ""
 		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
+		var entries []callgraph.Entry
+		if graph != nil {
+			entries = graph.EntryPoints(f.File, f.StartLine, apiRoot(prog))
+		}
 		var callers1 []string
 		for _, c := range im.Callers {
 			if c.Depth == 1 { // calls, dispatch and registrations all count
@@ -299,7 +303,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		rated = append(rated, ratedFunc{
 			Row: report.FuncRow{
 				Level: level, Display: f.Display, Kind: kindText(f, in.Sensitive),
-				Callers: im.Callers, CoverText: cover, Registered: im.Registered, File: f.File,
+				Callers: im.Callers, CoverText: cover, Registered: im.Registered, Entries: entries, File: f.File,
 			},
 			Key: f.Display + "\x00" + pkgPath, New: f.Kind == symbols.New, In: in,
 			Callers1: callers1, CrossPkgs: cross,
@@ -356,16 +360,8 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	// 12. Functions the removed code used that nothing reachable uses any
 	// more, and what only they reached.
 	if graph != nil {
-		root := func(f callgraph.FuncInfo) bool {
-			// Exported methods may implement interfaces of dependencies
-			// (String, MarshalJSON, ServeHTTP); exported functions of an
-			// importable package may be called from another module. Not so
-			// for generated code: it is API only if something uses it.
-			exported := ast.IsExported(f.Name)
-			return exported && (f.Method || importable(f.Pkg, f.PkgName)) && !prog.Generated[f.File]
-		}
 		required := interfaceMethods(prog)
-		for _, u := range graph.Dead(root, usedFunc) {
+		for _, u := range graph.Dead(apiRoot(prog), usedFunc) {
 			switch {
 			case isProtobuf(u.File):
 			case required(u):
@@ -606,4 +602,15 @@ func revParse(ctx context.Context, dir, rev string) (string, error) {
 		return "", fmt.Errorf("git rev-parse %s: %w: %s", rev, err, strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// apiRoot reports whether f is public API: exported methods may implement
+// interfaces of dependencies (String, MarshalJSON, ServeHTTP); exported
+// functions of an importable package may be called from another module. Not
+// so for generated code: it is API only if something uses it.
+func apiRoot(prog *load.Program) func(callgraph.FuncInfo) bool {
+	return func(f callgraph.FuncInfo) bool {
+		exported := ast.IsExported(f.Name)
+		return exported && (f.Method || importable(f.Pkg, f.PkgName)) && !prog.Generated[f.File]
+	}
 }

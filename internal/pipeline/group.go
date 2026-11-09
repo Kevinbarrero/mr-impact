@@ -149,7 +149,9 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		if f.In.Total > 0 && f.In.Covered == 0 && len(f.CrossPkgs) == 0 {
 			untested++
 		}
-		row.Members = append(row.Members, f.Row)
+		mr := f.Row
+		mr.Entries = nil // the group row carries the entry's
+		row.Members = append(row.Members, mr)
 	}
 	in.CrossPkgTestReached = cross && in.Covered == 0 && in.Total > 0
 	if !in.CrossPkgTestReached {

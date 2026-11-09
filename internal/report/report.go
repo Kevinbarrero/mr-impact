@@ -31,9 +31,10 @@ type FuncRow struct {
 	Display    string
 	Kind       string // "new" | "body" | "signature" | "signature (exported)"
 	Callers    []callgraph.Caller
-	CoverText  string           // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
-	Registered []callgraph.Site // where the function is passed as a value (handler/callback registration)
-	File       string           // repo-relative; shown only in a group's members list
+	CoverText  string            // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
+	Registered []callgraph.Site  // where the function is passed as a value (handler/callback registration)
+	Entries    []callgraph.Entry // entry points reaching it (main/init/api/registration); nil in a degraded run
+	File       string            // repo-relative; shown only in a group's members list
 	// Members: the new functions folded into this row (only new code calls
 	// them), sorted by Display; non-nil only on a group row.
 	Members []FuncRow
@@ -202,17 +203,23 @@ func Render(m Model) string {
 }
 
 func writeTable(b *strings.Builder, funcs []FuncRow) {
-	withReg := false
+	withReg, withEntries := false, false
 	for i, f := range funcs {
 		if i < maxTableRows && len(f.Registered) > 0 {
 			withReg = true
 		}
+		if i < maxTableRows && len(f.Entries) > 0 {
+			withEntries = true
+		}
 	}
+	head, sep := "| Risk | Function | Change | Callers |", "|---|---|---|---|"
 	if withReg {
-		b.WriteString("| Risk | Function | Change | Callers | Registered | Added-line coverage |\n|---|---|---|---|---|---|\n")
-	} else {
-		b.WriteString("| Risk | Function | Change | Callers | Added-line coverage |\n|---|---|---|---|---|\n")
+		head, sep = head+" Registered |", sep+"---|"
 	}
+	if withEntries {
+		head, sep = head+" Entry points |", sep+"---|"
+	}
+	b.WriteString(head + " Added-line coverage |\n" + sep + "---|\n")
 	for i, f := range funcs {
 		if i == maxTableRows {
 			break
@@ -220,6 +227,9 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 		fmt.Fprintf(b, "| %s | `%s` | %s | %s | ", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers))
 		if withReg {
 			b.WriteString(registeredCell(f.Registered) + " | ")
+		}
+		if withEntries {
+			b.WriteString(entryCell(f.Entries) + " | ")
 		}
 		fmt.Fprintf(b, "%s |\n", cell(f.CoverText))
 	}
@@ -244,6 +254,29 @@ func writeMembers(b *strings.Builder, funcs []FuncRow) {
 		}
 		b.WriteString("\n</details>\n\n")
 	}
+}
+
+// entryCell shows the first two entry points and how many more, or a dash.
+func entryCell(es []callgraph.Entry) string {
+	if len(es) == 0 {
+		return "—"
+	}
+	var parts []string
+	for _, e := range es[:min(2, len(es))] {
+		switch e.Kind {
+		case "api":
+			parts = append(parts, "api "+e.Display)
+		case "registered":
+			parts = append(parts, e.Display)
+		default: // main, init
+			parts = append(parts, e.Kind)
+		}
+	}
+	out := cell(strings.Join(parts, ", "))
+	if len(es) > 2 {
+		out += fmt.Sprintf(" +%d", len(es)-2)
+	}
+	return out
 }
 
 // registeredCell shows the first registration site and how many more.
