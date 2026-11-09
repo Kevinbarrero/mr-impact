@@ -7,6 +7,8 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -270,5 +272,106 @@ func TestCritical(t *testing.T) {
 		if glob != c.glob || ok != c.ok {
 			t.Errorf("Critical(%q, %q, %q) = %q, %v; want %q, %v", c.pkg, c.module, c.globs, glob, ok, c.glob, c.ok)
 		}
+	}
+}
+
+// stubImporter type-checks the library stubs under testdata/stubs (by import
+// path) and falls back to the standard library: no network, no real
+// dependency.
+type stubImporter map[string]*types.Package
+
+func (s stubImporter) Import(p string) (*types.Package, error) {
+	if pkg, ok := s[p]; ok {
+		return pkg, nil
+	}
+	dir := filepath.Join("testdata", "stubs", filepath.FromSlash(p))
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return stdImp.Import(p)
+	}
+	var files []*ast.File
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	pkg, err := (&types.Config{Importer: s}).Check(p, fset, files, nil)
+	if err != nil {
+		return nil, err
+	}
+	s[p] = pkg
+	return pkg, nil
+}
+
+// The data-access and crypto libraries of the default table, matched against
+// stubs with their real type names (pgx Conn a struct, Tx an interface;
+// pgxpool Pool, Conn and Tx structs).
+func TestCalls_Libraries(t *testing.T) {
+	imp := stubImporter{}
+	cases := []struct {
+		name, src string
+		want      []string
+	}{
+		{"pgx-v5", `package p
+import ("context"; "github.com/jackc/pgx/v5")
+func F(ctx context.Context, c *pgx.Conn) error {
+	tx, _ := c.Begin(ctx)
+	tx.Exec(ctx, "q")
+	return tx.Commit(ctx)
+}`, []string{"github.com/jackc/pgx/v5.(*Conn).Begin", "github.com/jackc/pgx/v5.(Tx).Exec", "github.com/jackc/pgx/v5.(Tx).Commit"}},
+		{"pgx-connect-not-matched", `package p
+import ("context"; "github.com/jackc/pgx/v5")
+func F(ctx context.Context) { pgx.Connect(ctx, "") }`, nil},
+		{"pgxpool-v5", `package p
+import ("context"; "github.com/jackc/pgx/v5/pgxpool")
+func F(ctx context.Context, p *pgxpool.Pool, t *pgxpool.Tx) {
+	c, _ := p.Acquire(ctx)
+	c.Exec(ctx, "q")
+	t.Commit(ctx)
+}`, []string{"github.com/jackc/pgx/v5/pgxpool.(*Pool).Acquire", "github.com/jackc/pgx/v5/pgxpool.(*Conn).Exec", "github.com/jackc/pgx/v5/pgxpool.(*Tx).Commit"}},
+		{"pgxpool-begin-tx", `package p
+import ("context"; "github.com/jackc/pgx/v5/pgxpool")
+func F(ctx context.Context, p *pgxpool.Pool) { tx, _ := p.Begin(ctx); tx.Rollback(ctx) }`,
+			[]string{"github.com/jackc/pgx/v5/pgxpool.(*Pool).Begin", "github.com/jackc/pgx/v5.(Tx).Rollback"}},
+		{"pgx-v4", `package p
+import ("context"; "github.com/jackc/pgx/v4"; "github.com/jackc/pgx/v4/pgxpool")
+func F(ctx context.Context, c *pgx.Conn, p *pgxpool.Pool, pc *pgxpool.Conn, pt *pgxpool.Tx, tx pgx.Tx) {
+	c.Exec(ctx, "q"); p.Exec(ctx, "q"); pc.Exec(ctx, "q"); pt.Exec(ctx, "q"); tx.Exec(ctx, "q")
+}`, []string{"github.com/jackc/pgx/v4.(*Conn).Exec", "github.com/jackc/pgx/v4/pgxpool.(*Pool).Exec",
+			"github.com/jackc/pgx/v4/pgxpool.(*Conn).Exec", "github.com/jackc/pgx/v4/pgxpool.(*Tx).Exec", "github.com/jackc/pgx/v4.(Tx).Exec"}},
+		{"sqlx", `package p
+import "github.com/jmoiron/sqlx"
+func F(db *sqlx.DB) error {
+	tx, _ := db.Beginx()
+	tx.Select(nil, "q")
+	return tx.Commit()
+}`, []string{"github.com/jmoiron/sqlx.(*DB).Beginx", "github.com/jmoiron/sqlx.(*Tx).Select", "database/sql.(*Tx).Commit"}},
+		{"gorm", `package p
+import "gorm.io/gorm"
+func F(db *gorm.DB) error { return db.Where("x").Create(1).Error }`,
+			[]string{"gorm.io/gorm.(*DB).Where", "gorm.io/gorm.(*DB).Create"}},
+		{"x-crypto", `package p
+import "golang.org/x/crypto/bcrypt"
+func F(p []byte) { bcrypt.GenerateFromPassword(p, 10) }`, []string{"golang.org/x/crypto/bcrypt.GenerateFromPassword"}},
+	}
+	tab := defaults(t)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, _, info := check(t, "example.com/p", c.src, imp)
+			var fn *ast.FuncDecl
+			for _, d := range f.Decls {
+				if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == "F" {
+					fn = fd
+				}
+			}
+			if got := tab.Calls(fn, info); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("Calls = %#v, want %#v", got, c.want)
+			}
+		})
 	}
 }
