@@ -87,7 +87,7 @@ The partition and assignment live in a pure function, `pipeline/group.go`: `grou
   - **Kind:** `new · +N` (N = members).
   - **Callers / Registered:** the entry's own.
   - **Cover:** the sums over entry and members of `Covered` and `Total`: `74 % (52/70)`. When any member alone is `0/k` with k > 0 and no test in another package reaches it (its cross-package list is empty), ` · K untested` is appended, K counting those members. With no profile, it reads `reached by test` if any of them is reached, else `not reached`.
-  - **Rating:** `risk.Assess` over the sums, with `Kind = new`, `NonTestCallers` = the entry's, `TestReached` = any, and `CrossPkgTestReached` per §3 applied to the sums. `Wiring` is set only if every function in the group is wiring.
+  - **Rating:** `risk.Assess` over the sums, with `Kind = new`, `NonTestCallers` = the entry's, `TestReached` = any, and `CrossPkgTestReached` per §3 applied to the sums. `Wiring` is set only if every function in the group is wiring. The group row is never rated below its entry's own rating when that is 🔴: an entry red on its own keeps the group 🔴, whatever its members cover.
 - Under the table, one `<details>` block per group row the table shows (the first 50 rows; a group past the cut gets none): `<summary>X +N new</summary>` listing each member with its own rating, cover cell and file, sorted by `Display`.
 - The diagram shows the entry only. Members are not nodes.
 - Entries without members, and every non-`new` function, stay ordinary rows.
