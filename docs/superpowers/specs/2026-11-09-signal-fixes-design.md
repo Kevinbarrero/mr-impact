@@ -36,9 +36,9 @@ A changed function is **covered only cross-package** when all of these hold:
 ### Effect
 
 - **Rating:** `risk.Input` gains `CrossPkgTestReached bool`. When it is set, the function is rated as *partial* (🟡) instead of *untested*. Red remains for a function no test reaches at all, or for an exported signature change in an importable package (unchanged rule, which takes precedence).
-- **Cover cell:** `0 % in profile · reached by tests in <pkg>[, <pkg>][ +N]`. Packages are shown relative to the module path (`internal/x`), at most 2, then `+N`.
+- **Cover cell:** `0 % in profile · reached by tests in <pkg>[, <pkg>][ +N]`. Packages are shown relative to the module path (`internal/x`), with `_test` stripped and duplicates dropped (`x` and `x_test` show `x` once), at most 2 in first-seen order, then `+N` distinct names. Reach is static (call graph), not observed at run time.
 - **Note:** when at least one function qualifies, one line goes above the table:
-  > ℹ️ N functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.
+  > ℹ️ N functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.
 - **Static mode** (no profile) is unchanged. `reached by test` already counts any package.
 
 ## 4. Wiring
@@ -86,12 +86,12 @@ The partition and assignment live in a pure function, `pipeline/group.go`: `grou
   - **Function:** the entry's display.
   - **Kind:** `new · +N` (N = members).
   - **Callers / Registered:** the entry's own.
-  - **Cover:** the sums over entry and members of `Covered` and `Total`: `74 % (52/70)`. When any member alone is `0/k` with k > 0, ` · K untested` is appended. With no profile, it reads `reached by test` if any of them is reached, else `not reached`.
+  - **Cover:** the sums over entry and members of `Covered` and `Total`: `74 % (52/70)`. When any member alone is `0/k` with k > 0 and no test in another package reaches it (its cross-package list is empty), ` · K untested` is appended, K counting those members. With no profile, it reads `reached by test` if any of them is reached, else `not reached`.
   - **Rating:** `risk.Assess` over the sums, with `Kind = new`, `NonTestCallers` = the entry's, `TestReached` = any, and `CrossPkgTestReached` per §3 applied to the sums. `Wiring` is set only if every function in the group is wiring.
-- Under the table, one `<details>` block per group: `<summary>X +N new</summary>` listing each member with its own rating, cover cell and file, sorted by `Display`.
+- Under the table, one `<details>` block per group row the table shows (the first 50 rows; a group past the cut gets none): `<summary>X +N new</summary>` listing each member with its own rating, cover cell and file, sorted by `Display`.
 - The diagram shows the entry only. Members are not nodes.
 - Entries without members, and every non-`new` function, stay ordinary rows.
-- The header count ("41 functions changed") keeps counting every changed function, members included. The 🔴/🟡/🟢 tally counts **rows**, so a group counts once with its own rating. A new line under the header, `+N new functions folded into M groups`, appears when grouping folded anything.
+- The header count ("41 functions changed") keeps counting every changed function, members included. The 🔴/🟡/🟢 tally counts **rows**, so a group counts once with its own rating. A new line under the header, `+N new functions folded into M groups` (`1 group` when M = 1), appears when grouping folded anything.
 
 ## 6. Components
 

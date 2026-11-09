@@ -2,7 +2,7 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 0 · 🟡 1 · 🟢 0** · coverage: `coverprofile` · base `0000000`
 
-ℹ️ 1 functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.
+ℹ️ 1 functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.
 
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|

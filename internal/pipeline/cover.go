@@ -46,15 +46,20 @@ func coverText(prof bool, covered, total int, graph bool, testReached bool, cros
 }
 
 // pkgList names at most two packages relative to the module path, then +N.
+// A package and its external test package (<pkg>_test) are one name.
 func pkgList(pkgs []string, mod string) string {
 	var names []string
+	seen := map[string]bool{}
 	for _, p := range pkgs {
 		p = strings.TrimSuffix(p, "_test")
 		p = strings.TrimPrefix(strings.TrimPrefix(p, mod), "/")
 		if p == "" {
 			p = "."
 		}
-		names = append(names, p)
+		if !seen[p] {
+			seen[p] = true
+			names = append(names, p)
+		}
 	}
 	s := strings.Join(names[:min(2, len(names))], ", ")
 	if len(names) > 2 {

@@ -1,7 +1,7 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 6 functions changed
 **🔴 1 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `0000000`\
-+3 new functions folded into 1 groups
++3 new functions folded into 1 group
 
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|

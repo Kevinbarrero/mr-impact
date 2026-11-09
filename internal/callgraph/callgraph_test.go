@@ -345,7 +345,7 @@ func TestImpact_TestPkgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	im := g.Impact("a/a.go", lineOf(t, dir, "a/a.go", "func A()"), 2)
-	want := []string{"example.com/tp/a", "example.com/tp/a_test", "example.com/tp/b"}
+	want := []string{"example.com/tp/a", "example.com/tp/a_test", "example.com/tp/b", "example.com/tp/c"}
 	if !im.TestReached || !reflect.DeepEqual(im.TestPkgs, want) {
 		t.Errorf("TestPkgs = %v (reached %v), want %v", im.TestPkgs, im.TestReached, want)
 	}

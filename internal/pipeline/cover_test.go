@@ -29,6 +29,15 @@ func TestCoverText_CrossPkg(t *testing.T) {
 	}
 }
 
+func TestPkgList_ExternalTestPackageNamedOnce(t *testing.T) {
+	if got, want := pkgList([]string{"m/b", "m/b_test", "m/c"}, "m"), "b, c"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got, want := pkgList([]string{"m/b", "m/b_test", "m/c", "m/c_test", "m/d", "m/e_test"}, "m"), "b, c +2"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestCoverText_Existing(t *testing.T) {
 	cases := []struct {
 		prof        bool

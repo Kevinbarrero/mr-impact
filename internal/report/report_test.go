@@ -310,7 +310,7 @@ func TestRender_Groups(t *testing.T) {
 	}
 	out := Render(m)
 	for _, want := range []string{
-		"### 🔍 MR impact — 4 functions changed\n**🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\\\n+2 new functions folded into 1 groups\n\n",
+		"### 🔍 MR impact — 4 functions changed\n**🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\\\n+2 new functions folded into 1 group\n\n",
 		"| 🟡 | `svc.New` | new · +2 | 1 | 67 % (4/6) · 1 untested |\n",
 		"<details><summary>svc.New +2 new</summary>\n\n- 🟢 `svc.load` · new · 100 % (2/2) — `svc/load.go`\n- 🟡 `svc.fmt` · new · 0 % (0/2) — `svc/fmt.go`\n\n</details>\n",
 	} {
@@ -324,4 +324,39 @@ func TestRender_Groups(t *testing.T) {
 		}
 	}
 	golden(t, "groups", out)
+}
+
+func TestRender_FoldLinePlural(t *testing.T) {
+	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0", Folded: 3, Groups: 2,
+		Funcs: []FuncRow{{Level: risk.Green, Display: "p.A", Kind: "new · +3", CoverText: "100 % (1/1)"}}}
+	if out := Render(m); !strings.Contains(out, "\\\n+3 new functions folded into 2 groups\n\n") {
+		t.Errorf("missing plural fold line in\n%s", out)
+	}
+}
+
+func TestRender_CrossPkgHint(t *testing.T) {
+	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0", CrossPkgOnly: 2,
+		Funcs: []FuncRow{{Level: risk.Yellow, Display: "p.A", Kind: "new", CoverText: "0 % in profile · reached by tests in q"}}}
+	want := "ℹ️ 2 functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n"
+	if out := Render(m); !strings.Contains(out, want) {
+		t.Errorf("missing %q in\n%s", want, out)
+	}
+}
+
+// Members are listed only for group rows the table shows.
+func TestRender_MembersOnlyForShownRows(t *testing.T) {
+	var funcs []FuncRow
+	for i := 0; i < maxTableRows; i++ {
+		funcs = append(funcs, FuncRow{Level: risk.Yellow, Display: fmt.Sprintf("p.f%02d", i), Kind: "body", CoverText: "100 % (1/1)"})
+	}
+	funcs = append(funcs, FuncRow{Level: risk.Yellow, Display: "p.zHidden", Kind: "new · +1", CoverText: "50 % (1/2)",
+		Members: []FuncRow{{Level: risk.Yellow, Display: "p.h", Kind: "new", CoverText: "0 % (0/1)", File: "p/h.go"}}})
+	funcs[0].Kind, funcs[0].Members = "new · +1", []FuncRow{{Level: risk.Green, Display: "p.g", Kind: "new", CoverText: "100 % (1/1)", File: "p/g.go"}}
+	out := Render(Model{Coverage: "coverprofile", BaseSHA: "abcdef0", Folded: 2, Groups: 2, Funcs: funcs})
+	if !strings.Contains(out, "<summary>p.f00 +1 new</summary>") {
+		t.Errorf("shown group's members missing")
+	}
+	if strings.Contains(out, "p.zHidden +1 new") || strings.Contains(out, "p/h.go") {
+		t.Errorf("members of a row past the table are listed:\n%s", out)
+	}
 }

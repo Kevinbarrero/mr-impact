@@ -233,7 +233,8 @@ func TestGroup_CrossPkgOnSums(t *testing.T) {
 	h.CrossPkgs = []string{"m/q"}
 	h = reassess(h)
 	rows, _, _ := group([]ratedFunc{a, h}, "m")
-	if want := "0 % in profile · reached by tests in q · 1 untested"; rows[0].CoverText != want {
+	// h is reached by a test in q, so it is not counted untested.
+	if want := "0 % in profile · reached by tests in q"; rows[0].CoverText != want {
 		t.Errorf("cover = %q, want %q", rows[0].CoverText, want)
 	}
 	if rows[0].Level != risk.Yellow {
