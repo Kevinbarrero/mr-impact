@@ -31,6 +31,8 @@ func TestIsWiring(t *testing.T) {
 
 		{"arith-return", "return a + b", false},
 		{"arith-assign", "x := a * 2; return x", false},
+		{"op-assign", "x := f(); x += 1; return x", false},
+		{"shift-assign", "x := f(); x <<= 2; return x", false},
 		{"index", "return s[i]", false},
 		{"assert", "return v.(T)", false},
 		{"not", "return !ok", false},
