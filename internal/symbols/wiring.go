@@ -84,6 +84,10 @@ func (w *wiringCheck) stmt(s ast.Stmt) bool {
 		_, ok := s.X.(*ast.CallExpr)
 		return ok && w.expr(s.X)
 	case *ast.AssignStmt:
+		// Compound assignment (+=, <<=, ...) computes.
+		if s.Tok != token.ASSIGN && s.Tok != token.DEFINE {
+			return false
+		}
 		return w.exprs(s.Lhs) && w.exprs(s.Rhs)
 	case *ast.ReturnStmt:
 		return w.exprs(s.Results)
