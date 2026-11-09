@@ -292,10 +292,7 @@ func registeredCell(rs []callgraph.Site) string {
 }
 
 func siteText(s callgraph.Site) string {
-	if s.Call == "" {
-		return fmt.Sprintf("%s:%d", s.File, s.Line)
-	}
-	return strings.ReplaceAll(s.Call, "`", "'")
+	return strings.ReplaceAll(s.Text(), "`", "'")
 }
 
 // writeUnused lists the functions the MR left without callers: dead code,

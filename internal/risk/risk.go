@@ -50,17 +50,29 @@ type Input struct {
 	// Untested sensitive code is red whatever its callers, wiring or
 	// cross-package reach.
 	Sensitive bool
+	// AddedLines: the number of lines the MR added to the function. The
+	// untested-sensitive rule needs some.
+	AddedLines int
+	// ReachUnknown: no call graph, so TestReached is not known. Without a
+	// profile the untested-sensitive rule then does not fire.
+	ReachUnknown bool
 }
 
 // Legend explains the rating in the report footer.
 const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 
 // SensitiveUntested reports the untested-sensitive rule: a sensitive
-// function whose added lines are 0/N (N > 0) with a profile, or that no test
-// reaches without one. It ignores cross-package reach on purpose.
+// function with added lines that are 0/N (N > 0) with a profile, or that no
+// test reaches without one (when the call graph tells). It ignores
+// cross-package reach on purpose.
 func (in Input) SensitiveUntested() bool {
-	return in.Sensitive &&
-		((in.HasProfile && in.Total > 0 && in.Covered == 0) || (!in.HasProfile && !in.TestReached))
+	if !in.Sensitive || in.AddedLines == 0 {
+		return false
+	}
+	if in.HasProfile {
+		return in.Total > 0 && in.Covered == 0
+	}
+	return !in.ReachUnknown && !in.TestReached
 }
 
 // Assess rates a changed function. It must not be called for symbols.Deleted,

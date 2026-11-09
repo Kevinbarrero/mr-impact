@@ -4,6 +4,7 @@ package callgraph
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -53,6 +54,15 @@ type Site struct {
 	File string // repo-relative
 	Line int
 	Call string // the call it is passed to, shortened, the function itself as "…" (e.g. "Subscribe(\"topic.a\", …)"); "" if not a call argument
+}
+
+// Text is the site as shown: its call, or "file:line" when it is not a call
+// argument.
+func (s Site) Text() string {
+	if s.Call == "" {
+		return fmt.Sprintf("%s:%d", s.File, s.Line)
+	}
+	return s.Call
 }
 
 // Unused is a function nothing reachable in the repo calls or takes as a
@@ -860,7 +870,7 @@ func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool)
 			add(Entry{"api", n.display})
 		}
 		for _, s := range g.registered(id) {
-			add(Entry{"registered", s.Call})
+			add(Entry{"registered", s.Text()})
 		}
 	}
 	rank := map[string]int{"main": 0, "init": 1, "api": 2, "registered": 3}

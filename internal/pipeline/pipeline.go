@@ -255,6 +255,8 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			NonTestCallers: len(im.Callers), TestReached: im.TestReached,
 			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
 			BranchesRemoved: f.BranchesRemoved,
+			AddedLines:      len(f.AddedLines),
+			ReachUnknown:    graph == nil,
 		}
 		pkgPath := pkgPathOf(prog.ModulePath, f.File)
 		var cross []string

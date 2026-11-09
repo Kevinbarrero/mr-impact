@@ -174,28 +174,28 @@ func TestLegend_MentionsWiring(t *testing.T) {
 }
 
 func TestAssess_SensitiveUntestedNoCallers(t *testing.T) {
-	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Covered: 0, Total: 5}
+	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Covered: 0, Total: 5, AddedLines: 5}
 	if got := Assess(in); got != Red {
 		t.Fatalf("got %v, want Red", got)
 	}
 }
 
 func TestAssess_SensitiveBeatsWiring(t *testing.T) {
-	in := Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Covered: 0, Total: 5}
+	in := Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Covered: 0, Total: 5, AddedLines: 5}
 	if got := Assess(in); got != Red {
 		t.Fatalf("got %v, want Red", got)
 	}
 }
 
 func TestAssess_SensitiveBeatsCrossPkg(t *testing.T) {
-	in := Input{Kind: symbols.Body, Sensitive: true, CrossPkgTestReached: true, HasProfile: true, Covered: 0, Total: 5}
+	in := Input{Kind: symbols.Body, Sensitive: true, CrossPkgTestReached: true, HasProfile: true, Covered: 0, Total: 5, AddedLines: 5}
 	if got := Assess(in); got != Red {
 		t.Fatalf("got %v, want Red", got)
 	}
 }
 
 func TestAssess_SensitiveStatic(t *testing.T) {
-	in := Input{Kind: symbols.Body, Sensitive: true}
+	in := Input{Kind: symbols.Body, Sensitive: true, AddedLines: 3}
 	if got := Assess(in); got != Red {
 		t.Fatalf("not reached = %v, want Red", got)
 	}
@@ -242,5 +242,44 @@ func TestAssess_SensitiveProfileNoAddedLinesKeepsTodaysRating(t *testing.T) {
 				t.Fatalf("got %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// Without a profile, a sensitive function that only lost lines keeps
+// today's rating; one with added lines no test reaches is red.
+func TestAssess_SensitiveStaticAddedLines(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Input
+		want Level
+	}{
+		{"lines only removed", Input{Kind: symbols.Body, Sensitive: true}, Yellow},
+		{"lines added", Input{Kind: symbols.Body, Sensitive: true, AddedLines: 3}, Red},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Assess(tt.in); got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			if got := tt.in.SensitiveUntested(); got != (tt.want == Red) {
+				t.Fatalf("SensitiveUntested = %v", got)
+			}
+		})
+	}
+}
+
+// With no call graph and no profile, test reach is unknown: the
+// untested-sensitive rule does not fire. A profile still decides.
+func TestAssess_SensitiveReachUnknown(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, AddedLines: 3, ReachUnknown: true}
+	if in.SensitiveUntested() {
+		t.Error("static, reach unknown: SensitiveUntested = true")
+	}
+	if got := Assess(in); got != Yellow {
+		t.Errorf("static, reach unknown = %v, want Yellow (today's rule)", got)
+	}
+	in.HasProfile, in.Total = true, 3
+	if !in.SensitiveUntested() || Assess(in) != Red {
+		t.Errorf("profile 0/3, reach unknown: want the rule to fire")
 	}
 }

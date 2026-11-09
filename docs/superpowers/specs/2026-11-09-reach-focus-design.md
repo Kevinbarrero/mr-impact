@@ -52,7 +52,7 @@ Patterns use `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M` (`
 ### Effect
 
 - **Kind column:** ` · sensitive` is appended, after ` · wiring` if both apply.
-- **Rating:** `risk.Input` gains `Sensitive bool`. A sensitive function that is *untested* is 🔴, whatever its caller count. Untested means: with a profile, its added lines are `0/N` (N > 0); without a profile, no test reaches it. This rule:
+- **Rating:** `risk.Input` gains `Sensitive bool` and `AddedLines int`. A sensitive function that is *untested* is 🔴, whatever its caller count. Untested means: it has added lines and, with a profile, they are `0/N` (N > 0); without a profile, no test reaches it. Without a profile and without a call graph (degraded), test reach is unknown (`Input.ReachUnknown`): the rule does not fire and today's rating applies; the function is still listed in the section. This rule:
   - is not capped by wiring;
   - is not softened by cross-package reach, because a cross-package test that reaches the function does not prove its added lines ran;
   - leaves partly tested sensitive functions as they are (🟡), listed in the section below;
@@ -78,6 +78,7 @@ The target itself counts if it qualifies. Test functions are never entry points.
 - **Table:** a new column **Entry points** shows the first 2 as `main`, `api orders.Create`, `GET("/x", …)`, then ` +N`, or `—` when none. When no row has any entry point, the column is omitted, as `Registered` already is.
 - **Rating:** unchanged. Entry points are context only.
 - **Degraded call graph:** the column is omitted.
+- A registration that is not a call argument (no call text) shows its `file:line`, as the Registered column does; entries are deduplicated on that text.
 
 ## 5. Configuration file
 
@@ -121,7 +122,7 @@ sensitive:
 
 - **Config errors:** usage error, exit 2, with a one-line reason on stderr. The note is not written or posted.
 - **A function whose declaration can't be found in the loaded program** (build tags): not rated today, so not checked here either (unchanged).
-- **Degraded call graph:** no entry points. Sensitive detection still runs, since it needs only types.
+- **Degraded call graph:** no entry points. Sensitive detection still runs, since it needs only types; without a profile the untested-sensitive rule does not fire (test reach is unknown), with one the profile decides.
 
 ## 8. Testing
 

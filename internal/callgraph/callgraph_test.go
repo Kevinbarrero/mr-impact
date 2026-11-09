@@ -3,6 +3,7 @@ package callgraph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"os"
 	"path/filepath"
@@ -419,5 +420,24 @@ func TestEntryPoints_Cap(t *testing.T) {
 	}
 	if len(got) > 0 && got[0] != (Entry{"api", "many.Call01"}) {
 		t.Errorf("first = %v", got[0])
+	}
+}
+
+// A registration that is not a call argument has no Call text: its entry
+// falls back to the site's file:line, never an empty Display.
+func TestEntryPoints_RegisteredWithoutCall(t *testing.T) {
+	g := loadEntries(t)
+	const dir = "testdata/entries"
+	got := g.EntryPoints("internal/svc/table.go", lineOf(t, dir, "internal/svc/table.go", "func hidden"), apiPred)
+	want := Entry{"registered", fmt.Sprintf("internal/svc/table.go:%d", lineOf(t, dir, "internal/svc/table.go", "var table"))}
+	found := false
+	for _, e := range got {
+		if e.Display == "" {
+			t.Errorf("empty entry in %v", got)
+		}
+		found = found || e == want
+	}
+	if !found {
+		t.Errorf("EntryPoints = %v, want it to hold %v", got, want)
 	}
 }
