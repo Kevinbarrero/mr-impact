@@ -33,6 +33,9 @@ type FuncRow struct {
 	Callers    []callgraph.Caller
 	CoverText  string           // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
 	Registered []callgraph.Site // where the function is passed as a value (handler/callback registration)
+	// Members: the new functions folded into this row (only new code calls
+	// them), sorted by Display; non-nil only on a group row.
+	Members []FuncRow
 }
 
 // RemovedCase is a case value removed from a switch while the value still
