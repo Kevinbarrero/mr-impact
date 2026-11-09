@@ -123,7 +123,7 @@ func TestLevelEmoji(t *testing.T) {
 }
 
 func TestLegend(t *testing.T) {
-	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡"
+	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 	if Legend != want {
 		t.Errorf("Legend = %q, want %q", Legend, want)
 	}
@@ -168,7 +168,60 @@ func TestAssess_WiringDoesNotCapExportedSignature(t *testing.T) {
 }
 
 func TestLegend_MentionsWiring(t *testing.T) {
-	if !strings.HasSuffix(Legend, "· wiring (straight-line setup) at most 🟡") {
+	if !strings.Contains(Legend, "· wiring (straight-line setup) at most 🟡") {
 		t.Fatalf("Legend = %q", Legend)
+	}
+}
+
+func TestAssess_SensitiveUntestedNoCallers(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Covered: 0, Total: 5}
+	if got := Assess(in); got != Red {
+		t.Fatalf("got %v, want Red", got)
+	}
+}
+
+func TestAssess_SensitiveBeatsWiring(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, Wiring: true, HasProfile: true, Covered: 0, Total: 5}
+	if got := Assess(in); got != Red {
+		t.Fatalf("got %v, want Red", got)
+	}
+}
+
+func TestAssess_SensitiveBeatsCrossPkg(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, CrossPkgTestReached: true, HasProfile: true, Covered: 0, Total: 5}
+	if got := Assess(in); got != Red {
+		t.Fatalf("got %v, want Red", got)
+	}
+}
+
+func TestAssess_SensitiveStatic(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true}
+	if got := Assess(in); got != Red {
+		t.Fatalf("not reached = %v, want Red", got)
+	}
+	in.TestReached = true
+	if got := Assess(in); got != Green {
+		t.Fatalf("reached = %v, want Green", got)
+	}
+}
+
+func TestAssess_SensitivePartial(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Covered: 2, Total: 5}
+	if got := Assess(in); got != Yellow {
+		t.Fatalf("got %v, want Yellow", got)
+	}
+}
+
+func TestAssess_SensitiveCovered(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Covered: 5, Total: 5}
+	if got := Assess(in); got != Green {
+		t.Fatalf("got %v, want Green", got)
+	}
+}
+
+func TestAssess_SensitiveNoAddedLines(t *testing.T) {
+	in := Input{Kind: symbols.Body, Sensitive: true, HasProfile: true, Total: 0, TestReached: true}
+	if got := Assess(in); got != Green {
+		t.Fatalf("got %v, want Green", got)
 	}
 }
