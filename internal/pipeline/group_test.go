@@ -209,3 +209,17 @@ func TestGroup_WiringOnlyIfAll(t *testing.T) {
 		}
 	}
 }
+
+func TestGroup_CycleFeedingSmallerMember(t *testing.T) {
+	fs := []ratedFunc{rf("p.a", 1, 1, "p.x2"), rf("p.x2", 1, 1, "p.y2"), rf("p.y2", 1, 1, "p.x2")}
+	rows, folded, groups := group(fs, "m")
+	if got, want := displays(rows), []string{"p.x2"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rows = %v, want %v", got, want)
+	}
+	if got, want := displays(rows[0].Members), []string{"p.a", "p.y2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("members = %v, want %v", got, want)
+	}
+	if folded != 2 || groups != 1 {
+		t.Errorf("folded, groups = %d, %d, want 2, 1", folded, groups)
+	}
+}

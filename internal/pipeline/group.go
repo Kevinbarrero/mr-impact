@@ -24,7 +24,8 @@ type ratedFunc struct {
 // registrant, every one of them a new function in fs. Each member goes to
 // the smallest-Display entry it is reachable from through members only; a
 // member reachable from no entry (a cycle with no outside caller) goes to the
-// smallest Display of its connected unclaimed set, which becomes the entry.
+// smallest Display of the source cycle it is reachable from, which becomes
+// the entry.
 // folded counts members, groups the entries that got any.
 func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups int) {
 	idx := make(map[string]int, len(fs))
@@ -46,9 +47,8 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 			}
 		}
 	}
-	// children: caller → member callees; neigh: member edges both ways.
+	// children: caller → member callees.
 	children := make([][]int, len(fs))
-	neigh := make([][]int, len(fs))
 	for i, f := range fs {
 		if !member[i] {
 			continue
@@ -56,10 +56,6 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 		for _, c := range f.Callers1 {
 			j := idx[c]
 			children[j] = append(children[j], i)
-			if member[j] {
-				neigh[i] = append(neigh[i], j)
-				neigh[j] = append(neigh[j], i)
-			}
 		}
 	}
 
@@ -79,12 +75,12 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 	for i := range owner {
 		owner[i] = -1
 	}
-	claim := func(entry int, next [][]int) {
+	claim := func(entry int) {
 		queue := []int{entry}
 		for len(queue) > 0 {
 			u := queue[0]
 			queue = queue[1:]
-			for _, v := range next[u] {
+			for _, v := range children[u] {
 				if member[v] && v != entry && owner[v] < 0 {
 					owner[v] = entry
 					queue = append(queue, v)
@@ -94,14 +90,20 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 	}
 	for _, i := range byDisplay {
 		if fs[i].New && !member[i] {
-			claim(i, children)
+			claim(i)
 		}
 	}
-	for _, i := range byDisplay {
-		if member[i] && owner[i] < 0 {
-			member[i] = false // promoted to entry
-			claim(i, neigh)
+	// Unclaimed members form cycles and what they feed. Promote the
+	// smallest-Display function of a source strongly connected component
+	// (nothing unclaimed outside it calls into it), which therefore reaches
+	// its component and everything downstream; repeat.
+	for {
+		e := sourceEntry(byDisplay, member, owner, children)
+		if e < 0 {
+			break
 		}
+		member[e] = false // promoted to entry
+		claim(e)
 	}
 
 	membersOf := make(map[int][]int)
@@ -158,6 +160,50 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		row.CoverText += fmt.Sprintf(" · %d untested", untested)
 	}
 	return row
+}
+
+// sourceEntry returns the smallest-Display unclaimed member that lies in a
+// source strongly connected component of the unclaimed members (edges caller
+// → callee), or -1 when every member is claimed. Since the minimum over source
+// components of their smallest Display is the smallest Display among all
+// their functions, the first such function in Display order is the answer.
+func sourceEntry(byDisplay []int, member []bool, owner []int, children [][]int) int {
+	unclaimed := func(i int) bool { return member[i] && owner[i] < 0 }
+	reach := make(map[int]map[int]bool)
+	for _, i := range byDisplay {
+		if !unclaimed(i) {
+			continue
+		}
+		seen := map[int]bool{i: true}
+		queue := []int{i}
+		for len(queue) > 0 {
+			u := queue[0]
+			queue = queue[1:]
+			for _, v := range children[u] {
+				if unclaimed(v) && !seen[v] {
+					seen[v] = true
+					queue = append(queue, v)
+				}
+			}
+		}
+		reach[i] = seen
+	}
+	for _, u := range byDisplay {
+		if !unclaimed(u) {
+			continue
+		}
+		source := true
+		for v, rv := range reach {
+			if rv[u] && !reach[u][v] { // v reaches u from outside u's component
+				source = false
+				break
+			}
+		}
+		if source {
+			return u
+		}
+	}
+	return -1
 }
 
 func sortedUnique(s []string) []string {
