@@ -127,11 +127,12 @@ func Render(m Model) string {
 	if m.Degraded {
 		b.WriteString(" · ⚠️ degraded")
 	}
-	b.WriteString("\n")
 	if m.Folded > 0 {
-		fmt.Fprintf(&b, "+%d new functions folded into %d groups\n", m.Folded, m.Groups)
+		// A trailing backslash is a hard line break: the fold line renders
+		// directly under the tally, in the same paragraph.
+		fmt.Fprintf(&b, "\\\n+%d new functions folded into %d groups", m.Folded, m.Groups)
 	}
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 
 	if m.CrossPkgOnly > 0 {
 		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)

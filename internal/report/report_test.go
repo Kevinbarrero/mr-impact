@@ -310,7 +310,7 @@ func TestRender_Groups(t *testing.T) {
 	}
 	out := Render(m)
 	for _, want := range []string{
-		"### 🔍 MR impact — 4 functions changed\n**🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\n+2 new functions folded into 1 groups\n\n",
+		"### 🔍 MR impact — 4 functions changed\n**🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\\\n+2 new functions folded into 1 groups\n\n",
 		"| 🟡 | `svc.New` | new · +2 | 1 | 67 % (4/6) · 1 untested |\n",
 		"<details><summary>svc.New +2 new</summary>\n\n- 🟢 `svc.load` · new · 100 % (2/2) — `svc/load.go`\n- 🟡 `svc.fmt` · new · 0 % (0/2) — `svc/fmt.go`\n\n</details>\n",
 	} {
