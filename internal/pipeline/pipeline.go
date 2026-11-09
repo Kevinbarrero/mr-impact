@@ -223,6 +223,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	}
 
 	// 6 + 8. Impact and risk per function.
+	var rated []ratedFunc
 	for _, f := range live {
 		if !prog.Files[f.File] {
 			m.NotAnalyzed = append(m.NotAnalyzed, f.Display+" (build tags)")
@@ -243,12 +244,13 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
 			BranchesRemoved: f.BranchesRemoved,
 		}
+		pkgPath := pkgPathOf(prog.ModulePath, f.File)
 		var cross []string
 		if prof != nil {
 			in.HasProfile = true
 			in.Covered, in.Total = prof.Lines(f.File, f.AddedLines)
 			if in.Total > 0 && in.Covered == 0 {
-				cross = crossPkgTests(pkgPathOf(prog.ModulePath, f.File), im.TestPkgs)
+				cross = crossPkgTests(pkgPath, im.TestPkgs)
 			}
 			if len(cross) > 0 {
 				in.CrossPkgTestReached = true
@@ -257,10 +259,28 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		in.Wiring = f.Wiring
 		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
-		m.Funcs = append(m.Funcs, report.FuncRow{
-			Level: risk.Assess(in), Display: f.Display, Kind: kindText(f),
-			Callers: im.Callers, CoverText: cover, Registered: im.Registered,
+		var callers1 []string
+		for _, c := range im.Callers {
+			if c.Depth == 1 { // calls, dispatch and registrations all count
+				callers1 = append(callers1, c.Display+"\x00"+c.Pkg)
+			}
+		}
+		rated = append(rated, ratedFunc{
+			Row: report.FuncRow{
+				Level: risk.Assess(in), Display: f.Display, Kind: kindText(f),
+				Callers: im.Callers, CoverText: cover, Registered: im.Registered, File: f.File,
+			},
+			Key: f.Display + "\x00" + pkgPath, New: f.Kind == symbols.New, In: in,
+			Callers1: callers1, CrossPkgs: cross,
 		})
+	}
+	if graph != nil {
+		m.Funcs, m.Folded, m.Groups = group(rated, prog.ModulePath)
+	} else {
+		// Callers unknown: nothing can be shown to be called only by new code.
+		for _, r := range rated {
+			m.Funcs = append(m.Funcs, r.Row)
+		}
 	}
 
 	// 9. Removed case values that still exist: those values now reach

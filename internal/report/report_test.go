@@ -292,3 +292,36 @@ func TestRenderUnusedAndRegistered(t *testing.T) {
 		t.Error("unused section must come before the table")
 	}
 }
+
+func TestRender_Groups(t *testing.T) {
+	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		Folded: 2, Groups: 1,
+		Funcs: []FuncRow{
+			{Level: risk.Yellow, Display: "svc.New", Kind: "new · +2", File: "svc/svc.go",
+				Callers:   []callgraph.Caller{{Display: "main.main", Pkg: "ex.com/cmd", Depth: 1, Via: "svc.New"}},
+				CoverText: "67 % (4/6) · 1 untested",
+				Members: []FuncRow{
+					{Level: risk.Green, Display: "svc.load", Kind: "new", CoverText: "100 % (2/2)", File: "svc/load.go"},
+					{Level: risk.Yellow, Display: "svc.fmt", Kind: "new", CoverText: "0 % (0/2)", File: "svc/fmt.go"},
+				}},
+			{Level: risk.Green, Display: "svc.Old", Kind: "body", File: "svc/old.go", CoverText: "100 % (1/1)",
+				Callers: []callgraph.Caller{{Display: "main.main", Pkg: "ex.com/cmd", Depth: 1, Via: "svc.Old"}}},
+		},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"### 🔍 MR impact — 4 functions changed\n**🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\n+2 new functions folded into 1 groups\n\n",
+		"| 🟡 | `svc.New` | new · +2 | 1 | 67 % (4/6) · 1 untested |\n",
+		"<details><summary>svc.New +2 new</summary>\n\n- 🟢 `svc.load` · new · 100 % (2/2) — `svc/load.go`\n- 🟡 `svc.fmt` · new · 0 % (0/2) — `svc/fmt.go`\n\n</details>\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	for _, absent := range []string{"svc/svc.go", "svc/old.go", "\"🟢 svc.load\"", "\"🟡 svc.fmt\""} {
+		if strings.Contains(out, absent) {
+			t.Errorf("output contains %q", absent)
+		}
+	}
+	golden(t, "groups", out)
+}

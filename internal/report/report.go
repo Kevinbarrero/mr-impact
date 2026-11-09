@@ -33,6 +33,7 @@ type FuncRow struct {
 	Callers    []callgraph.Caller
 	CoverText  string           // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
 	Registered []callgraph.Site // where the function is passed as a value (handler/callback registration)
+	File       string           // repo-relative; shown only in a group's members list
 	// Members: the new functions folded into this row (only new code calls
 	// them), sorted by Display; non-nil only on a group row.
 	Members []FuncRow
@@ -85,6 +86,8 @@ type Model struct {
 	BaseSHA              string // rendered as first 7 chars
 	Degraded             bool
 	CrossPkgOnly         int    // functions covered only by tests in other packages: renders the coverpkg hint
+	Folded               int    // new functions folded into group rows (FuncRow.Members); counted in the header
+	Groups               int    // group rows that folded any
 	Failure              string // non-empty: only marker + failure line + footer
 	NoGoChanges          bool   // marker + "No Go code changes" + footer
 	Version              string
@@ -119,12 +122,16 @@ func Render(m Model) string {
 		}
 	}
 
-	fmt.Fprintf(&b, "### 🔍 MR impact — %d functions changed\n", len(funcs))
+	fmt.Fprintf(&b, "### 🔍 MR impact — %d functions changed\n", len(funcs)+m.Folded)
 	fmt.Fprintf(&b, "**🔴 %d · 🟡 %d · 🟢 %d** · coverage: `%s` · base `%s`", red, yellow, green, m.Coverage, shortSHA(m.BaseSHA))
 	if m.Degraded {
 		b.WriteString(" · ⚠️ degraded")
 	}
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+	if m.Folded > 0 {
+		fmt.Fprintf(&b, "+%d new functions folded into %d groups\n", m.Folded, m.Groups)
+	}
+	b.WriteString("\n")
 
 	if m.CrossPkgOnly > 0 {
 		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; the coverprofile counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
@@ -202,6 +209,22 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
 	}
 	b.WriteString("\n")
+	writeMembers(b, funcs)
+}
+
+// writeMembers lists, per group row in table order, the new functions folded
+// into it, each with its own rating, kind, cover and file.
+func writeMembers(b *strings.Builder, funcs []FuncRow) {
+	for _, f := range funcs {
+		if len(f.Members) == 0 {
+			continue
+		}
+		fmt.Fprintf(b, "<details><summary>%s +%d new</summary>\n\n", f.Display, len(f.Members))
+		for _, mf := range f.Members {
+			fmt.Fprintf(b, "- %s `%s` · %s · %s — `%s`\n", mf.Level.Emoji(), mf.Display, mf.Kind, mf.CoverText, mf.File)
+		}
+		b.WriteString("\n</details>\n\n")
+	}
 }
 
 // registeredCell shows the first registration site and how many more.
