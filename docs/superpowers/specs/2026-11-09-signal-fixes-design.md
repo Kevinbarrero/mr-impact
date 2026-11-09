@@ -73,8 +73,8 @@ Grouping runs in the pipeline after every function is rated, when the call graph
 
 Among the rated functions of kind `new`, from depth-1 non-test callers and the registering functions in `Registered`:
 
-- **Member:** has at least one non-test caller or registrant, and every one of them is another `new` function of this MR.
-- **Entry:** every other `new` function. Existing code calls or registers it, or nothing in non-test code does.
+- **Member:** is not rated 🔴 on its own, has at least one non-test caller or registrant, and every one of them is another `new` function of this MR.
+- **Entry:** every other `new` function. Existing code calls or registers it, nothing in non-test code does, or it is rated 🔴 on its own: a red function always keeps its own row, so a sum over a covered entry never hides it, and it claims the members it reaches like any entry.
 
 Each member is assigned to exactly one entry: the entry with the smallest `Display` (byte order) from which the member is reachable through members only. A member reachable from no entry, for example a cycle of new functions with no outside caller, is assigned to the smallest `Display` member of its cycle, which becomes the entry. Assignment is deterministic and never double-counts.
 
@@ -132,7 +132,7 @@ Nothing here can fail on its own. Missing data degrades to today's behaviour:
 - **E2E fixtures** in `testdata/e2e/`, each with a golden note:
   - `cross_pkg_coverage`: a profile made without `-coverpkg`;
   - `wiring`: one wiring function in `main`, one in a library package, one near-miss with a loop;
-  - `new_subtree`: an entry + 4 members, one member untested.
+  - `new_subtree`: an entry + 3 members, and an untested (🔴) function the entry calls that stays its own row.
 - **Existing goldens:** regenerated only where these rules change them, and every changed golden reviewed line by line.
 
 ## 9. Out of scope

@@ -1,3 +1,5 @@
-# the four new helpers only New calls are folded into its row, not rows
+# the three new helpers only New calls are folded into its row, not rows;
+# fmt is untested (red on its own), so it keeps its own row
 main.main:
 svc.New: main.main
+svc.fmt: svc.New, main.main

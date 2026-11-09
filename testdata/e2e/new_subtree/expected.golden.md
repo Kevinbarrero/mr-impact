@@ -1,17 +1,17 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 6 functions changed
-**🔴 0 · 🟡 2 · 🟢 0** · coverage: `coverprofile` · base `0000000`\
-+4 new functions folded into 1 groups
+**🔴 1 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `0000000`\
++3 new functions folded into 1 groups
 
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
-| 🟡 | `svc.New` | new · +4 | 1 | 79 % (19/24) · 1 untested |
+| 🔴 | `svc.fmt` | new | 2 (2 pkgs) | 0 % (0/5) |
 | 🟡 | `main.main` | body · wiring | 0 | no added lines · not reached |
+| 🟢 | `svc.New` | new · +3 | 1 | 100 % (19/19) |
 
-<details><summary>svc.New +4 new</summary>
+<details><summary>svc.New +3 new</summary>
 
 - 🟢 `svc.(*S).apply` · new · 100 % (4/4) — `svc/svc.go`
-- 🔴 `svc.fmt` · new · 0 % (0/5) — `svc/svc.go`
 - 🟢 `svc.load` · new · 100 % (5/5) — `svc/svc.go`
 - 🟢 `svc.price` · new · 100 % (5/5) — `svc/svc.go`
 
@@ -23,9 +23,11 @@
 
 ```mermaid
 flowchart RL
-  n0["🟡 svc.New"]:::yellow
+  n0["🔴 svc.fmt"]:::red
   n1["🟡 main.main"]:::yellow
-  n1 --> n0
+  n2["🟢 svc.New"]:::green
+  n2 --> n0
+  n1 --> n2
   subgraph legend ["Legend"]
     direction LR
     lr["🔴 changed, not tested"]:::red
@@ -38,7 +40,12 @@ flowchart RL
   classDef green fill:#dfd,stroke:#2a2
 ```
 
-<details><summary>All callers (1)</summary>
+<details><summary>All callers (3)</summary>
+
+**`svc.fmt`** (2)
+
+- depth 1: `svc.New`
+- depth 2: `main.main`
 
 **`svc.New`** (1)
 

@@ -20,8 +20,9 @@ type ratedFunc struct {
 
 // group folds members into entries; rows keep input order for entries/others.
 //
-// A member is a new function with at least one depth-1 non-test caller or
-// registrant, every one of them a new function in fs. Each member goes to
+// A member is a new function not rated red on its own, with at least one
+// depth-1 non-test caller or registrant, every one of them a new function
+// in fs. Each member goes to
 // the smallest-Display entry it is reachable from through members only; a
 // member reachable from no entry (a cycle with no outside caller) goes to the
 // smallest Display of the source cycle it is reachable from, which becomes
@@ -36,7 +37,9 @@ func group(fs []ratedFunc, mod string) (rows []report.FuncRow, folded, groups in
 	}
 	member := make([]bool, len(fs))
 	for i, f := range fs {
-		if !f.New || len(f.Callers1) == 0 {
+		// A function red on its own stays a row (an entry), so summing
+		// never hides it.
+		if !f.New || len(f.Callers1) == 0 || f.Row.Level == risk.Red {
 			continue
 		}
 		member[i] = true

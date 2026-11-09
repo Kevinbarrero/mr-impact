@@ -28,6 +28,12 @@ func rf(display string, cov, total int, callers ...string) ratedFunc {
 	return f
 }
 
+// reassess re-rates f after a test changed its Input.
+func reassess(f ratedFunc) ratedFunc {
+	f.Row.Level = risk.Assess(f.In)
+	return f
+}
+
 func displays(rows []report.FuncRow) []string {
 	var out []string
 	for _, r := range rows {
@@ -109,7 +115,10 @@ func TestGroup_RegistrationCountsAsCaller(t *testing.T) {
 
 func TestGroup_SumsAndUntested(t *testing.T) {
 	a := rf("p.A", 10, 10, "p.Old")
-	fs := []ratedFunc{a, rf("p.h", 5, 10, "p.A"), rf("p.i", 0, 4, "p.A")}
+	i := rf("p.i", 0, 4, "p.A")
+	i.In.Wiring = true // 0/4 alone is yellow, so it folds
+	i = reassess(i)
+	fs := []ratedFunc{a, rf("p.h", 5, 10, "p.A"), i}
 	rows, folded, groups := group(fs, "m")
 	if len(rows) != 1 || folded != 2 || groups != 1 {
 		t.Fatalf("rows = %v, folded = %d, groups = %d", displays(rows), folded, groups)
@@ -136,14 +145,50 @@ func TestGroup_SumsAndUntested(t *testing.T) {
 	}
 }
 
-func TestGroup_RatingFromSumsNotWorstMember(t *testing.T) {
+// A function rated red on its own is never folded: it stays a row (and is
+// an entry), so summing cannot hide it under a covered entry.
+func TestGroup_RedMemberIsNotFolded(t *testing.T) {
 	h := rf("p.h", 0, 4, "p.A")
 	if h.Row.Level != risk.Red {
-		t.Fatalf("member alone = %v, want red", h.Row.Level)
+		t.Fatalf("p.h alone = %v, want red", h.Row.Level)
 	}
-	rows, _, _ := group([]ratedFunc{rf("p.A", 10, 10, "p.Old"), h}, "m")
-	if rows[0].Level != risk.Yellow {
-		t.Errorf("group level = %v, want yellow", rows[0].Level)
+	a := rf("p.A", 10, 10, "p.Old")
+	g := rf("p.g", 1, 1, "p.A")
+	rows, folded, groups := group([]ratedFunc{a, h, g}, "m")
+	if got, want := displays(rows), []string{"p.A", "p.h"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rows = %v, want %v", got, want)
+	}
+	if r := find(t, rows, "p.h"); r.Level != risk.Red || r.Members != nil || !reflect.DeepEqual(r, h.Row) {
+		t.Errorf("p.h row = %+v, want its own red row", r)
+	}
+	if got := displays(find(t, rows, "p.A").Members); !reflect.DeepEqual(got, []string{"p.g"}) {
+		t.Errorf("p.A members = %v, want [p.g]", got)
+	}
+	if find(t, rows, "p.A").Level != risk.Green {
+		t.Errorf("p.A level = %v, want green (11/11)", find(t, rows, "p.A").Level)
+	}
+	if folded != 1 || groups != 1 {
+		t.Errorf("folded, groups = %d, %d, want 1, 1", folded, groups)
+	}
+}
+
+// A red function claims the members it reaches, like any entry.
+func TestGroup_RedFunctionIsEntry(t *testing.T) {
+	a := rf("p.A", 10, 10, "p.Old")
+	h := rf("p.h", 0, 4, "p.A")
+	k := rf("p.k", 1, 1, "p.h")
+	rows, folded, groups := group([]ratedFunc{a, h, k}, "m")
+	if got, want := displays(rows), []string{"p.A", "p.h"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rows = %v, want %v", got, want)
+	}
+	if m := find(t, rows, "p.A").Members; m != nil {
+		t.Errorf("p.A members = %v, want nil", displays(m))
+	}
+	if got := displays(find(t, rows, "p.h").Members); !reflect.DeepEqual(got, []string{"p.k"}) {
+		t.Errorf("p.h members = %v, want [p.k]", got)
+	}
+	if folded != 1 || groups != 1 {
+		t.Errorf("folded, groups = %d, %d, want 1, 1", folded, groups)
 	}
 }
 
@@ -174,6 +219,7 @@ func TestGroup_NoProfileReachedByAny(t *testing.T) {
 	h := rf("p.h", 0, 0, "p.A")
 	a.In.HasProfile, h.In.HasProfile = false, false
 	h.In.TestReached = true
+	a, h = reassess(a), reassess(h)
 	rows, _, _ := group([]ratedFunc{a, h}, "m")
 	if rows[0].CoverText != "reached by test" {
 		t.Errorf("cover = %q", rows[0].CoverText)
@@ -185,6 +231,7 @@ func TestGroup_CrossPkgOnSums(t *testing.T) {
 	h := rf("p.h", 0, 2, "p.A")
 	h.In.CrossPkgTestReached = true
 	h.CrossPkgs = []string{"m/q"}
+	h = reassess(h)
 	rows, _, _ := group([]ratedFunc{a, h}, "m")
 	if want := "0 % in profile · reached by tests in q · 1 untested"; rows[0].CoverText != want {
 		t.Errorf("cover = %q, want %q", rows[0].CoverText, want)
@@ -197,8 +244,10 @@ func TestGroup_CrossPkgOnSums(t *testing.T) {
 func TestGroup_WiringOnlyIfAll(t *testing.T) {
 	for _, all := range []bool{true, false} {
 		a := rf("p.A", 0, 3, "p.Old")
-		h := rf("p.h", 0, 2, "p.A")
+		h := rf("p.h", 0, 0, "p.A") // no added lines, reached: green alone
+		h.In.TestReached = true
 		a.In.Wiring, h.In.Wiring = true, all
+		a, h = reassess(a), reassess(h)
 		rows, _, _ := group([]ratedFunc{a, h}, "m")
 		want := risk.Red
 		if all {
