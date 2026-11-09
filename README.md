@@ -105,6 +105,8 @@ In order, each section only when it has something:
 
 Callers through a func value (an event bus, a handler table) are narrowed to the code that registered the function; callers of a closure are not counted as callers of the function that created it. An exported signature change is red only in a package other modules can import.
 
+The **Entry points** column shows which entry points reach a changed function through any number of calls: `main`, `init`, `api <function>` (an exported function of an importable package, or an exported method) and the registration call that passes it as a value (e.g. `GET("/x", …)`). The first two are shown, then ` +N`; `—` means none. The column appears only when some shown row has an entry point, and never in a degraded run.
+
 The base revision is exported with `git archive` into a temporary directory and type-checked next to the head; the repository and its worktree are not touched.
 
 ## Limits

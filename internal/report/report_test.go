@@ -390,3 +390,31 @@ func TestRender_SensitiveSection(t *testing.T) {
 		t.Error("empty section rendered")
 	}
 }
+
+func TestRender_EntryPointsColumn(t *testing.T) {
+	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	with := base
+	with.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "main", Display: "main.main"}, {Kind: "api", Display: "x.Do"}, {Kind: "registered", Display: `GET("/x", …)`}}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a"},
+		{Level: risk.Yellow, Display: "x.C", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "init", Display: "x.init"}, {Kind: "registered", Display: `GET("/a|b", …)`}}},
+	}
+	out := Render(with)
+	for _, want := range []string{
+		"| Risk | Function | Change | Callers | Entry points | Added-line coverage |",
+		"| 🟡 | `x.A` | body | 0 | main, api x.Do +1 | n/a |",
+		"| 🟡 | `x.B` | body | 0 | — | n/a |",
+		`| init, GET("/a\|b", …) | n/a |`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	none := base
+	none.Funcs = []FuncRow{{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a"}}
+	if strings.Contains(Render(none), "Entry points") {
+		t.Error("column present with no entries")
+	}
+}

@@ -429,3 +429,32 @@ func TestRun_NilSensitiveUsesDefaults(t *testing.T) {
 		t.Errorf("run.Exec = %v %q, want red \"new · sensitive\"", r.Level, r.Kind)
 	}
 }
+
+// TestRun_DegradedStillSensitive: without a call graph the sensitive rule
+// still rates by the profile-less test reach, and no entry points are shown.
+func TestRun_DegradedStillSensitive(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "sensitive_zero_config")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	table, err := sensitive.NewTable(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, Depth: 2, Timeout: time.Nanosecond, Sensitive: &table})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !m.Degraded {
+		t.Fatal("Degraded = false, want the call graph timeout")
+	}
+	if r := rowOf(t, m, "run.Exec"); r.Level != risk.Red {
+		t.Errorf("run.Exec = %v, want red", r.Level)
+	}
+	if len(m.Sensitive) == 0 {
+		t.Error("no sensitive rows")
+	}
+	for _, r := range m.Funcs {
+		if len(r.Entries) > 0 {
+			t.Errorf("row %s has entries %+v", r.Display, r.Entries)
+		}
+	}
+}

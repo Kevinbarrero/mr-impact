@@ -3,11 +3,11 @@
 **🔴 1 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `0000000`\
 +3 new functions folded into 1 group
 
-| Risk | Function | Change | Callers | Added-line coverage |
-|---|---|---|---|---|
-| 🔴 | `svc.fmt` | new | 2 (2 pkgs) | 0 % (0/5) |
-| 🟡 | `main.main` | body · wiring | 0 | no added lines · not reached |
-| 🟢 | `svc.New` | new · +3 | 1 | 100 % (19/19) |
+| Risk | Function | Change | Callers | Entry points | Added-line coverage |
+|---|---|---|---|---|---|
+| 🔴 | `svc.fmt` | new | 2 (2 pkgs) | main, api svc.New | 0 % (0/5) |
+| 🟡 | `main.main` | body · wiring | 0 | main | no added lines · not reached |
+| 🟢 | `svc.New` | new · +3 | 1 | main, api svc.New | 100 % (19/19) |
 
 <details><summary>svc.New +3 new</summary>
 
