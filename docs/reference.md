@@ -185,7 +185,15 @@ include:
   - remote: https://raw.githubusercontent.com/Kevinbarrero/mr-impact/main/ci/mrimpact.gitlab-ci.yml
 ```
 
-The template ([`ci/mrimpact.gitlab-ci.yml`](../ci/mrimpact.gitlab-ci.yml)) adds one job, `mrimpact`, that runs on merge request pipelines (`rules: if: $CI_PIPELINE_SOURCE == "merge_request_event"`) in `image: golang:${MRIMPACT_GO_VERSION}` with `GIT_DEPTH: "0"`. It installs mrimpact with `install.sh` and keeps `mrimpact-report.md` as an artifact for a week. Override its variables in your `.gitlab-ci.yml`:
+The template ([`ci/mrimpact.gitlab-ci.yml`](../ci/mrimpact.gitlab-ci.yml)) adds one job, `mrimpact`, that runs on merge request pipelines (`rules: if: $CI_PIPELINE_SOURCE == "merge_request_event"`) in `image: golang:${MRIMPACT_GO_VERSION}` with `GIT_DEPTH: "0"`. It installs mrimpact with `install.sh` and keeps `mrimpact-report.md` as an artifact for a week. The job runs in the `test` stage (GitLab's default); if your `stages:` has no `test`, override with `mrimpact: { stage: <yours> }`. `MRIMPACT_VERSION` takes `latest`, `v0.3.0` or `0.3.0`. Variables set in the template's job beat top-level `variables:`, so override them by redefining the job in your `.gitlab-ci.yml`:
+
+```yaml
+mrimpact:
+  variables:
+    MRIMPACT_RUN_TESTS: "true"
+```
+
+GitLab merges this with the included job. The variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -194,6 +202,8 @@ The template ([`ci/mrimpact.gitlab-ci.yml`](../ci/mrimpact.gitlab-ci.yml)) adds 
 | `MRIMPACT_COVERPROFILE` | `""` | coverage profile globs, separated by spaces |
 | `MRIMPACT_RUN_TESTS` | `"false"` | when `"true"` and no coverprofile is given, run `go test ./... -coverprofile=mrimpact.cover` first |
 | `MRIMPACT_ARGS` | `""` | extra flags, split on whitespace |
+
+To reuse a coverage profile from an earlier job, set `MRIMPACT_COVERPROFILE` the same way (`mrimpact: { variables: { MRIMPACT_COVERPROFILE: "coverage.out" }, needs: [test] }`); that job must publish the profile as an artifact.
 
 Set `MRIMPACT_TOKEN` as described in [Token setup](#token-setup). Runners without github.com access can build mrimpact with `go install` (from a Go module proxy) instead of the template; see the job below.
 

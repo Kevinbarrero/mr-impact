@@ -17,7 +17,7 @@ import (
 type Registration struct {
 	Callee  string // the call's function, e.g. "SubscribeAsync", "GET"
 	Call    string // the call as written, the handler as "…", shortened
-	Handler string // display name of the function passed, e.g. "exchange.(*tradeService).SelectExchangeMode"
+	Handler string // display name of the function passed, e.g. "api.(*Server).handleUsers"
 	File    string // repo-relative
 	Line    int
 	key     string // Callee + args, the handler by name: what Diff compares

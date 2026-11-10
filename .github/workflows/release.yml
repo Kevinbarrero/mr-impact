@@ -38,6 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Move floating v0 tag
+        if: ${{ !contains(github.ref_name, '-') }}
         run: |
           git tag -f v0
           git push -f origin v0

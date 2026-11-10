@@ -2,6 +2,7 @@ package releasetest_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -130,5 +131,73 @@ func TestGitLabTemplate_Variables(t *testing.T) {
 	rules := job["rules"].([]any)
 	if len(rules) != 1 || rules[0].(map[string]any)["if"] != `$CI_PIPELINE_SOURCE == "merge_request_event"` {
 		t.Errorf("rules = %v", rules)
+	}
+}
+
+func TestGitLabTemplate_VersionNormalisation(t *testing.T) {
+	m := loadYAML(t, "ci/mrimpact.gitlab-ci.yml")
+	script := m["mrimpact"].(map[string]any)["script"].([]any)[0].(string)
+	start := strings.Index(script, "ref=$MRIMPACT_VERSION")
+	end := strings.Index(script, "esac")
+	if start < 0 || end < 0 {
+		t.Fatalf("script lacks the version normalisation:\n%s", script)
+	}
+	snippet := script[start:end+len("esac")] + "\necho \"$ref\"\n"
+	for in, want := range map[string]string{"latest": "main", "v0.3.0": "v0.3.0", "0.3.0": "v0.3.0"} {
+		cmd := exec.Command("sh", "-c", snippet)
+		cmd.Env = append(os.Environ(), "MRIMPACT_VERSION="+in)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(string(out)); got != want {
+			t.Errorf("version %q -> ref %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCI_ReleaseCheckAndDogfoodGuard(t *testing.T) {
+	ci := loadYAML(t, ".github/workflows/ci.yml")
+	jobs := ci["jobs"].(map[string]any)
+	rc, ok := jobs["release-check"].(map[string]any)
+	if !ok {
+		t.Fatal("ci.yml has no release-check job")
+	}
+	found := false
+	for _, s := range rc["steps"].([]any) {
+		step := s.(map[string]any)
+		if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "goreleaser/goreleaser-action@") {
+			args := step["with"].(map[string]any)["args"].(string)
+			if args != "release --snapshot --clean --skip=publish" {
+				t.Errorf("args = %q", args)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("release-check does not run goreleaser-action")
+	}
+	cond := jobs["mrimpact"].(map[string]any)["if"].(string)
+	if !strings.Contains(cond, "dependabot[bot]") {
+		t.Errorf("dogfood job not guarded against dependabot: %q", cond)
+	}
+}
+
+func TestRelease_PrereleaseHandling(t *testing.T) {
+	rel := loadYAML(t, ".github/workflows/release.yml")
+	steps := rel["jobs"].(map[string]any)["release"].(map[string]any)["steps"].([]any)
+	ok := false
+	for _, s := range steps {
+		step := s.(map[string]any)
+		if step["name"] == "Move floating v0 tag" {
+			ok = strings.Contains(step["if"].(string), "contains(github.ref_name, '-')")
+		}
+	}
+	if !ok {
+		t.Error("v0 move step is not skipped for pre-release tags")
+	}
+	g := loadYAML(t, ".goreleaser.yaml")
+	if g["release"].(map[string]any)["prerelease"] != "auto" {
+		t.Errorf("release = %v", g["release"])
 	}
 }

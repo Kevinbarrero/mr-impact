@@ -35,3 +35,6 @@ checksum:
 # passes --release-notes), not from commit messages.
 changelog:
   disable: true
+
+release:
+  prerelease: auto
