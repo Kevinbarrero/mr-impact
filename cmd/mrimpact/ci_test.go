@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,13 @@ func TestDetectCI(t *testing.T) {
 		if err != nil || got.Kind != c.kind || got.BaseSHA != c.base || got.Fork != c.fork || got.Summary != c.summary {
 			t.Errorf("%s: got %+v err=%v", c.name, got, err)
 		}
+	}
+}
+
+func init() {
+	// No test may reach the real GitHub API: building a real client fails loudly.
+	newGitHubClient = func(string, string, string) githubUpserter {
+		panic("test built a real GitHub client; call stubGitHub first")
 	}
 }
 
@@ -196,30 +204,47 @@ func TestRun_GitHubSkipEmptyStillSummarises(t *testing.T) {
 
 func TestRun_BasePrecedence(t *testing.T) {
 	repo, base := fixture(t, "no_go_changes")
-	// Event base is bogus; the flag must win over both.
-	e, _, out := ghRun(t, strings.Replace(prEvent, "basesha", "bogus1", 1), map[string]string{"CI_MERGE_REQUEST_DIFF_BASE_SHA": "bogus2"})
-	for _, k := range []string{"GITHUB_ACTIONS"} {
-		delete(e, k) // local mode; only the base logic matters
+	// --strict makes an unresolvable base exit 2, so exit 0 proves the right
+	// source was used; the other sources hold a bogus sha.
+	bogus := func(sha string) string { return strings.Replace(prEvent, "basesha", sha, 1) }
+	cases := []struct {
+		name  string
+		event string
+		extra map[string]string
+		args  []string
+	}{
+		{"flag beats var and event", bogus("bogus1"), map[string]string{"CI_MERGE_REQUEST_DIFF_BASE_SHA": "bogus2"}, []string{"--base", base}},
+		{"var beats event", bogus("bogus1"), map[string]string{"CI_MERGE_REQUEST_DIFF_BASE_SHA": base}, nil},
+		{"event base", bogus(base), nil, nil},
 	}
-	if code, _, stderr := exec(t, e, "--dir", repo, "--base", base, "--out", out); code != 0 {
-		t.Fatalf("flag should win: code=%d stderr=%s", code, stderr)
+	for _, c := range cases {
+		stubGitHub(t, &fakeGH{})
+		e, _, out := ghRun(t, c.event, c.extra)
+		args := append([]string{"--strict", "--dir", repo, "--out", out}, c.args...)
+		if code, _, stderr := exec(t, e, args...); code != 0 {
+			t.Errorf("%s: code=%d stderr=%s", c.name, code, stderr)
+		}
 	}
-	// GitLab variable beats the event base.
-	e, _, out = ghRun(t, strings.Replace(prEvent, "basesha", "bogus1", 1), map[string]string{"CI_MERGE_REQUEST_DIFF_BASE_SHA": base})
-	if code, _, stderr := exec(t, e, "--dir", repo, "--out", out); code != 0 {
-		t.Fatalf("gitlab var should win over event: code=%d stderr=%s", code, stderr)
-	}
-	// The event base is used when nothing else is set.
-	f := &fakeGH{}
-	stubGitHub(t, f)
-	e, _, out = ghRun(t, strings.Replace(prEvent, "basesha", base, 1), nil)
-	if code, _, stderr := exec(t, e, "--dir", repo, "--out", out); code != 0 {
-		t.Fatalf("event base: code=%d stderr=%s", code, stderr)
+	// Control: a bogus base alone does fail under --strict.
+	stubGitHub(t, &fakeGH{})
+	e, _, out := ghRun(t, bogus("bogus1"), nil)
+	if code, _, _ := exec(t, e, "--strict", "--dir", repo, "--out", out); code != 2 {
+		t.Errorf("control: bogus event base should exit 2, got %d", code)
 	}
 	// A push event with no --base keeps the usage error.
 	e, _, out = ghRun(t, `{"ref":"x"}`, nil)
 	if code, _, stderr := exec(t, e, "--dir", repo, "--out", out); code != 2 || !strings.Contains(stderr, "--base is required") {
 		t.Fatalf("push: code=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestRun_BadRepositoryIsUsageError(t *testing.T) {
+	for _, bad := range []string{"", "noslash", "a/b/c"} {
+		e, _, out := ghRun(t, prEvent, map[string]string{"GITHUB_REPOSITORY": bad})
+		code, _, stderr := exec(t, e, "--base", "x", "--out", out)
+		if code != 2 || !strings.Contains(stderr, "GITHUB_REPOSITORY") || !strings.Contains(stderr, fmt.Sprintf("%q", bad)) {
+			t.Errorf("%q: code=%d stderr=%s", bad, code, stderr)
+		}
 	}
 }
 
