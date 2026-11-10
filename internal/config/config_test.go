@@ -183,3 +183,29 @@ func TestParse_ArchitectureErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestChanges_ArchitectureBlock(t *testing.T) {
+	hex := Architecture{Set: true, Preset: "hexagonal"}
+	custom := Architecture{Set: true, Layers: []LayerGlobs{{"a", []string{"a/..."}}, {"b", []string{"b/..."}}}}
+	reordered := Architecture{Set: true, Layers: []LayerGlobs{{"b", []string{"b/..."}}, {"a", []string{"a/..."}}}}
+	cases := []struct {
+		name       string
+		base, head Architecture
+		want       []Change
+	}{
+		{"adds preset", Architecture{}, hex, []Change{{"adds architecture", []string{"hexagonal"}}}},
+		{"adds custom", Architecture{}, custom, []Change{{"adds architecture", []string{"custom"}}}},
+		{"drops", hex, Architecture{}, []Change{{"drops architecture", []string{"hexagonal"}}}},
+		{"same", hex, hex, nil},
+		{"preset", hex, Architecture{Set: true, Preset: "clean"}, []Change{{"changes architecture", []string{"preset"}}}},
+		{"layer order", custom, reordered, []Change{{"changes architecture", []string{"layers"}}}},
+		{"several", hex, Architecture{Set: true, Preset: "hexagonal", Allow: []string{"a -> b"}, Isolated: []string{"a"}, Stages: []string{"x"}, ModulesRoot: "m"},
+			[]Change{{"changes architecture", []string{"allow", "isolated", "stages", "modules_root"}}}},
+	}
+	for _, c := range cases {
+		got := Changes(Config{Architecture: c.base}, Config{Architecture: c.head})
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}

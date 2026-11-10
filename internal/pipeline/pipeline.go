@@ -426,6 +426,9 @@ func configNote(ctx context.Context, cfg Config, baseSHA string) *report.ConfigN
 	}
 	head := *cfg.File
 	n := &report.ConfigNote{File: cfg.FileName, Critical: head.Critical, Removes: head.SensitiveRemove, Adds: head.SensitiveAdd}
+	if head.Architecture.Set {
+		n.Architecture = head.Architecture.Name()
+	}
 	if cfg.FileRel != "" {
 		var base config.Config
 		src, err := diff.ShowFile(ctx, cfg.Dir, baseSHA, cfg.FileRel)

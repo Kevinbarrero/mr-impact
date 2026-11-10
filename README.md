@@ -10,7 +10,7 @@ mrimpact --base origin/master
 
 Prints the note to stdout and writes it to `mrimpact-report.md`. Nothing is posted unless the GitLab CI variables are present. Run it from the module root (or pass `--dir`), with the head revision checked out.
 
-Flags: `--dir`, `--base` (env `CI_MERGE_REQUEST_DIFF_BASE_SHA`), `--head HEAD`, `--depth 2`, `--coverprofile` (repeatable glob), `--tags a,b`, `--timeout 5m`, `--fail-on red`, `--strict`, `--skip-empty`, `--no-post`, `--out mrimpact-report.md`, `--config <path>`.
+Flags: `--dir`, `--base` (env `CI_MERGE_REQUEST_DIFF_BASE_SHA`), `--head HEAD`, `--depth 2`, `--coverprofile` (repeatable glob), `--tags a,b`, `--timeout 5m`, `--fail-on red,arch`, `--strict`, `--skip-empty`, `--no-post`, `--out mrimpact-report.md`, `--config <path>`.
 
 ## Configuration
 
@@ -125,10 +125,10 @@ The note is posted only when `CI_MERGE_REQUEST_IID`, `CI_PROJECT_ID` and `CI_API
 | Code | Meaning |
 |------|---------|
 | 0 | Success, or degraded/internal failure without `--strict` (the failure is reported on stderr and in the note) |
-| 1 | `--fail-on red` and at least one red function |
+| 1 | `--fail-on red` and at least one red function, or `--fail-on arch` and a new violation of the declared architecture (never for an inferred model or a missing base) |
 | 2 | Usage error (including a config error), or `--strict` with an internal failure (analysis, posting or `--out` write error) |
 
-`--fail-on` accepts only `""` or `red`. `--depth` must be at least 1 and `--timeout` greater than 0.
+`--fail-on` takes a comma list of `red` and `arch` (empty items are ignored; anything else is a usage error). `--depth` must be at least 1 and `--timeout` greater than 0.
 
 ## What the note shows
 

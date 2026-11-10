@@ -738,3 +738,14 @@ func TestRender_ArchInferredNothingClassified(t *testing.T) {
 		t.Errorf("section missing once a package is classified:\n%s", out)
 	}
 }
+
+func TestRender_ConfigLineArchitecture(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a"}},
+		Config: &ConfigNote{File: ".mrimpact.yml", Critical: []string{"a/..."}, Architecture: "hexagonal", Changed: true,
+			Changes: []config.Change{{What: "adds architecture", Items: []string{"hexagonal"}}}}}
+	want := "⚙️ .mrimpact.yml: critical `a/...` · architecture hexagonal — changed in this MR (MR adds architecture: `hexagonal`)"
+	if got := Render(m); !strings.Contains(got, want+"\n") {
+		t.Errorf("missing %q in:\n%s", want, got)
+	}
+}

@@ -226,7 +226,53 @@ func Changes(base, head Config) []Change {
 	pair(base.Critical, head.Critical, "adds critical", "drops critical")
 	pair(base.SensitiveRemove, head.SensitiveRemove, "removes from defaults", "restores defaults")
 	pair(base.SensitiveAdd, head.SensitiveAdd, "adds", "drops added")
+	out = append(out, archChanges(base.Architecture, head.Architecture)...)
 	return out
+}
+
+// Name is the preset, or "custom" for a block without one.
+func (a Architecture) Name() string {
+	if a.Preset == "" {
+		return "custom"
+	}
+	return a.Preset
+}
+
+// archChanges reports the architecture block going from base to head.
+func archChanges(b, h Architecture) []Change {
+	switch {
+	case !b.Set && !h.Set:
+		return nil
+	case !b.Set:
+		return []Change{{"adds architecture", []string{h.Name()}}}
+	case !h.Set:
+		return []Change{{"drops architecture", []string{b.Name()}}}
+	}
+	var keys []string
+	if b.Preset != h.Preset {
+		keys = append(keys, "preset")
+	}
+	if !slices.EqualFunc(b.Layers, h.Layers, func(x, y LayerGlobs) bool {
+		return x.Name == y.Name && slices.Equal(x.Globs, y.Globs)
+	}) {
+		keys = append(keys, "layers")
+	}
+	if !slices.Equal(b.Allow, h.Allow) {
+		keys = append(keys, "allow")
+	}
+	if !slices.Equal(b.Isolated, h.Isolated) {
+		keys = append(keys, "isolated")
+	}
+	if !slices.Equal(b.Stages, h.Stages) {
+		keys = append(keys, "stages")
+	}
+	if b.ModulesRoot != h.ModulesRoot {
+		keys = append(keys, "modules_root")
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return []Change{{"changes architecture", keys}}
 }
 
 // missing returns the distinct entries of a not in b, in a's order.
