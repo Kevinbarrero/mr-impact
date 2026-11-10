@@ -498,6 +498,34 @@ func TestRender_EntryPointsCommonMainAndRegistration(t *testing.T) {
 	}
 }
 
+// Several init (or main) functions render alike ("init"): one label, stated
+// once, and counted once in "+N".
+func TestRender_EntryPointsSameLabelOnce(t *testing.T) {
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
+	m.Funcs = []FuncRow{
+		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "api", Display: "x.Do"}, {Kind: "init", Display: "a.init"}, {Kind: "init", Display: "b.init"}}},
+		{Level: risk.Yellow, Display: "x.B", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+			{Kind: "init", Display: "b.init"}, {Kind: "init", Display: "c.init"}}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"All changes shown are reached from: init\n\n| Risk |",
+		"| `x.A` | body | 0 | api `x.Do` | n/a |",
+		"| `x.B` | body | 0 | — | n/a |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	single := m
+	single.Funcs = []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
+		{Kind: "init", Display: "a.init"}, {Kind: "init", Display: "b.init"}, {Kind: "init", Display: "c.init"}}}}
+	if out := Render(single); !strings.Contains(out, "| `x.A` | body | 0 | init | n/a |") {
+		t.Errorf("repeated init in a cell:\n%s", out)
+	}
+}
+
 // (c) With a single row nothing is common: the table is unchanged.
 func TestRender_EntryPointsSingleRowUnchanged(t *testing.T) {
 	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
