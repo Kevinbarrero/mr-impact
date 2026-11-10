@@ -100,8 +100,49 @@ func TestFromConfig_UnknownNames(t *testing.T) {
 			t.Errorf("%q: %v", y, err)
 		}
 	}
-	// entry is known.
-	if _, err := FromConfig(parseArch(t, "architecture:\n  layers:\n    a: [a/...]\n  allow: [\"entry -> a\"]\n")); err != nil {
-		t.Error(err)
+}
+
+func TestFromConfig_EntryInRulesRefused(t *testing.T) {
+	for _, y := range []string{
+		"architecture:\n  preset: hexagonal\n  allow: [\"entry -> domain\"]\n",
+		"architecture:\n  preset: hexagonal\n  allow: [\"domain -> entry\"]\n",
+		"architecture:\n  preset: hexagonal\n  isolated: [entry]\n",
+	} {
+		_, err := FromConfig(parseArch(t, y))
+		if !errors.Is(err, config.ErrConfig) || !strings.Contains(err.Error(), "entry") {
+			t.Errorf("%q: %v", y, err)
+		}
+	}
+}
+
+func TestFromConfig_ModulesRootCleaned(t *testing.T) {
+	for in, want := range map[string]string{"./mods/": "mods", "a//b": "a/b", "mods": "mods"} {
+		m, err := FromConfig(parseArch(t, "architecture:\n  preset: modular\n  modules_root: "+in+"\n"))
+		if err != nil || m.ModulesRoot != want {
+			t.Errorf("%q: %q %v", in, m.ModulesRoot, err)
+		}
+	}
+	for _, in := range []string{"/abs", "../x", "a/../../x", "."} {
+		_, err := config.Parse("t", strings.NewReader("architecture:\n  preset: modular\n  modules_root: \""+in+"\"\n"))
+		if !errors.Is(err, config.ErrConfig) || !strings.Contains(err.Error(), in) {
+			t.Errorf("%q: %v", in, err)
+		}
+	}
+}
+
+// README workaround for the flat-layout isolation case.
+func TestFromConfig_FlatLayoutSharedWorkaround(t *testing.T) {
+	from, to := "m/internal/handlers/user", "m/internal/handlers/common"
+	g := Graph{Module: "m", Edges: []Edge{{From: from, To: to, File: "f.go", Line: 1}}}
+	plain, _ := FromConfig(parseArch(t, "architecture:\n  preset: hexagonal\n"))
+	if _, v := plain.Judge(g); len(v) != 1 || !v[0].Isolated {
+		t.Fatalf("flat layout not flagged: %+v", v)
+	}
+	m, err := FromConfig(parseArch(t, "architecture:\n  preset: hexagonal\n  layers: {shared: [internal/handlers/common]}\n  allow: [\"adapters -> shared\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j, v := m.Judge(g); j != 1 || len(v) != 0 {
+		t.Errorf("workaround still flagged: %d %+v", j, v)
 	}
 }

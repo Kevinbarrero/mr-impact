@@ -57,8 +57,8 @@ func (m Model) allowed(module string, e Edge, from, to, fromUnit, toUnit string)
 		return e.To == module+"/"+m.ModulesRoot+"/"+to, false
 	}
 	if from == to {
+		sameUnit := fromUnit != "" && fromUnit == toUnit
 		for _, l := range m.Layers {
-			sameUnit := fromUnit != "" && fromUnit == toUnit
 			if l.Name == from && l.Isolated && e.From != e.To && !sameUnit &&
 				!hasDirPrefix(e.From, e.To) && !hasDirPrefix(e.To, e.From) {
 				return false, true

@@ -71,6 +71,15 @@ Only import paths and directory names are used. Edges are module-internal import
 
 An **isolated** layer's packages may import each other only inside one unit (the layer's directory plus one more segment: `internal/controller/http/x` → `internal/controller/http/common`) or along one directory path (`adapters/pg` → `adapters/pg/rows`), never between two units (`adapters/http` → `adapters/pg`). A layer matched by a glob has no unit: directory path only.
 
+In a flat layout the unit is the package itself, so `internal/handlers/user` → `internal/handlers/common` is flagged `(isolated)`. Workaround: put the shared package in a layer of its own and `allow` the adapter layer to import it:
+
+```yaml
+architecture:
+  preset: hexagonal
+  layers: {shared: [internal/handlers/common]}
+  allow: ["adapters -> shared"]
+```
+
 **Configuration** (all optional, strict like the rest of the file):
 
 ```yaml
@@ -86,7 +95,7 @@ architecture:
 
 - `layers` without a `preset` is a custom architecture of exactly those layers: a layer may import only itself and what `allow` lists; the entry rule still applies. Globs win over directory names, the first declared layer first.
 - `allow` entries are written `a -> b`, with a space on each side of the arrow (`a->b` is refused).
-- An unknown preset, an `allow` or `isolated` entry naming an unknown layer, `stages` without `preset: pipeline` (or `pipeline` without `stages`), `modules_root` without `preset: modular`, or a duplicate layer is a config error: exit 2.
+- An unknown preset, an `allow` or `isolated` entry naming an unknown layer, `stages` without `preset: pipeline` (or `pipeline` without `stages`), `modules_root` without `preset: modular` (or an absolute, `..` or `.` one), `entry` named in `allow` or `isolated` (it is implicit), or a duplicate layer is a config error: exit 2.
 
 **The section** shows the model, conformance (conforming judged edges ÷ judged edges, base → head, `n/a` when nothing is judged) and how many packages were classified; then each **new** violating edge (up to 15, by file and line): `- ❌ new: \`domain → adapters\` — \`internal/domain/order/order.go:7\` imports \`internal/adapters/pg\``, with `(isolated)` when the isolation rule was broken, and the first line counting the violations already in the base. Under *Coupling*, Martin's metrics (Ca, Ce, instability I, abstractness A, distance D) base → head for touched packages (holding an added, modified, deleted or moved non-test file) whose Ca, Ce, A or D changed, at most 10; a package new in the MR shows `—` on the base side. The section appears only when there is a new violation, a conformance change or a metric change; in inferred mode, never when no package was classified. When the base revision cannot be loaded, it shows head conformance only and `(base not loaded: new violations not computed)`.
 

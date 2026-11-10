@@ -63,7 +63,7 @@ func FromConfig(a config.Architecture) (Model, error) {
 	}
 
 	known := func(n string) bool {
-		return n == EntryLayer || slices.ContainsFunc(m.Layers, func(l Layer) bool { return l.Name == n })
+		return slices.ContainsFunc(m.Layers, func(l Layer) bool { return l.Name == n })
 	}
 	idx := func(n string) int {
 		return slices.IndexFunc(m.Layers, func(l Layer) bool { return l.Name == n })
@@ -75,6 +75,9 @@ func FromConfig(a config.Architecture) (Model, error) {
 		}
 		from, to := f[0], f[2]
 		for _, n := range []string{from, to} {
+			if n == EntryLayer {
+				return bad("allow %q names %q, which has no effect (entry is implicit)", s, n)
+			}
 			if !known(n) {
 				return bad("allow %q names unknown layer %q", s, n)
 			}
@@ -84,6 +87,9 @@ func FromConfig(a config.Architecture) (Model, error) {
 		}
 	}
 	for _, n := range a.Isolated {
+		if n == EntryLayer {
+			return bad("isolated names %q, which has no effect (entry is implicit)", n)
+		}
 		if !known(n) {
 			return bad("isolated names unknown layer %q", n)
 		}
