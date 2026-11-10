@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -23,6 +24,45 @@ type Config struct {
 	Critical        []string // package globs, cleaned (path.Clean, no leading "./")
 	SensitiveAdd    []string // patterns added to the default sensitive table
 	SensitiveRemove []string // patterns removed from the default sensitive table
+	Architecture    Architecture
+}
+
+// LayerGlobs is one configured layer: its name and cleaned globs.
+type LayerGlobs struct {
+	Name  string
+	Globs []string
+}
+
+// Architecture is the `architecture` block. Set is false when absent.
+type Architecture struct {
+	Set         bool
+	Preset      string
+	Layers      []LayerGlobs // file order
+	Allow       []string     // "<a> -> <b>"
+	Isolated    []string
+	Stages      []string
+	ModulesRoot string
+}
+
+// presetNames mirrors arch.PresetNames (config cannot import arch); a test in
+// internal/arch keeps the two equal.
+var presetNames = []string{"clean", "onion", "hexagonal", "ddd", "layered", "mvc", "pipeline", "modular"}
+
+// PresetNames lists the accepted architecture presets.
+func PresetNames() []string { return slices.Clone(presetNames) }
+
+var (
+	allowRE = regexp.MustCompile(`^\s*[A-Za-z0-9_-]+\s*->\s*[A-Za-z0-9_-]+\s*$`)
+	nameRE  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
+
+type archShape struct {
+	Preset      string    `yaml:"preset"`
+	Layers      yaml.Node `yaml:"layers"`
+	Allow       []string  `yaml:"allow"`
+	Isolated    []string  `yaml:"isolated"`
+	Stages      []string  `yaml:"stages"`
+	ModulesRoot string    `yaml:"modules_root"`
 }
 
 type fileShape struct {
@@ -31,6 +71,7 @@ type fileShape struct {
 		Add    []string `yaml:"add"`
 		Remove []string `yaml:"remove"`
 	} `yaml:"sensitive"`
+	Architecture *archShape `yaml:"architecture"`
 }
 
 // Load reads explicitPath when non-empty (it must exist), else
@@ -68,11 +109,95 @@ func Parse(name string, r io.Reader) (Config, error) {
 		}
 		raw.Critical[i] = cleanGlob(g)
 	}
+	arch, err := parseArchitecture(name, raw.Architecture)
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Critical:        raw.Critical,
 		SensitiveAdd:    raw.Sensitive.Add,
 		SensitiveRemove: raw.Sensitive.Remove,
+		Architecture:    arch,
 	}, nil
+}
+
+func parseArchitecture(name string, a *archShape) (Architecture, error) {
+	if a == nil {
+		return Architecture{}, nil
+	}
+	bad := func(format string, args ...any) (Architecture, error) {
+		return Architecture{}, fmt.Errorf("%w: %s: architecture: %s", ErrConfig, name, fmt.Sprintf(format, args...))
+	}
+	out := Architecture{
+		Set: true, Preset: a.Preset, Allow: a.Allow, Isolated: a.Isolated,
+		Stages: a.Stages, ModulesRoot: a.ModulesRoot,
+	}
+	if a.Preset != "" && !slices.Contains(presetNames, a.Preset) {
+		return bad("unknown preset %q (want one of %s)", a.Preset, strings.Join(presetNames, ", "))
+	}
+	if n := &a.Layers; n.Kind != 0 {
+		if n.Kind != yaml.MappingNode {
+			return bad("layers must be a mapping of layer name to globs")
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k, v := n.Content[i], n.Content[i+1]
+			lname := k.Value
+			if k.Kind != yaml.ScalarNode || !nameRE.MatchString(lname) {
+				return bad("invalid layer name %q", lname)
+			}
+			for _, l := range out.Layers {
+				if l.Name == lname {
+					return bad("duplicate layer %q", lname)
+				}
+			}
+			if v.Kind != yaml.SequenceNode {
+				return bad("layer %q: globs must be a list of strings", lname)
+			}
+			lg := LayerGlobs{Name: lname}
+			for _, e := range v.Content {
+				if e.Kind != yaml.ScalarNode || e.Tag != "!!str" {
+					return bad("layer %q: globs must be a list of strings", lname)
+				}
+				if err := checkGlob(e.Value); err != nil {
+					return bad("layer %q glob %q: %v", lname, e.Value, err)
+				}
+				lg.Globs = append(lg.Globs, cleanGlob(e.Value))
+			}
+			out.Layers = append(out.Layers, lg)
+		}
+	}
+	if a.Preset == "" && len(out.Layers) == 0 {
+		return bad("needs a preset or layers")
+	}
+	for _, s := range a.Allow {
+		if !allowRE.MatchString(s) {
+			return bad("allow %q is not \"<layer> -> <layer>\"", s)
+		}
+	}
+	if a.Preset == "pipeline" {
+		if len(a.Stages) == 0 {
+			return bad("preset pipeline requires stages")
+		}
+		seen := map[string]bool{}
+		for _, s := range a.Stages {
+			if !nameRE.MatchString(s) {
+				return bad("invalid stage name %q", s)
+			}
+			if seen[s] {
+				return bad("duplicate stage %q", s)
+			}
+			seen[s] = true
+		}
+	} else if len(a.Stages) > 0 {
+		return bad("stages %v need preset pipeline", a.Stages)
+	}
+	if a.ModulesRoot != "" && a.Preset != "modular" {
+		return bad("modules_root %q needs preset modular", a.ModulesRoot)
+	}
+	if a.Preset == "modular" && (len(out.Layers) > 0 || len(a.Allow) > 0 || len(a.Isolated) > 0) {
+		return bad("preset modular takes no layers, allow or isolated")
+	}
+	return out, nil
 }
 
 // Change is one difference between two configs: What the MR does ("adds
