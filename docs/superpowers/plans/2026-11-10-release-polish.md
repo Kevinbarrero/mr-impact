@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make mrimpact releasable as `v0.3.0` on `github.com/Kevinbarrero/mrimpact`:
+**Goal:** Make mrimpact releasable as `v0.3.0` on `github.com/Kevinbarrero/mr-impact`:
 - the module renamed;
 - a real version string;
 - GitHub PR posting and a job summary;
@@ -22,7 +22,8 @@
 - **GitLab behaviour is unchanged.** Every existing test and golden passes; only the footer version line may change.
 - **Nothing is pushed, tagged or published.** No `git remote add`, `git push` or `git tag`, and nothing is posted to any forge.
 - **No new Go dependency:** the GitHub client uses `net/http` and `encoding/json`.
-- **Module path:** `github.com/Kevinbarrero/mrimpact`.
+- **Module path:** `github.com/Kevinbarrero/mr-impact` (the repo is `mr-impact`); the command, the binary, `cmd/mrimpact` and the archive names stay `mrimpact` (GoReleaser `project_name: mrimpact`). The Action is `Kevinbarrero/mr-impact@v0`.
+- **Remote:** `origin` = `git@github.com:Kevinbarrero/mr-impact.git` is already configured. Its `main` holds one commit (`c5c4a3a`, "Initial commit": GitHub's Apache-2.0 `LICENSE`). Never push.
 - **License:** Apache-2.0, with the appendix line `Copyright 2026 Kevinbarrero`.
 - **Version:**
   - `cmd/mrimpact` keeps `var version = "dev"`, set by `-X main.version=v{{.Version}}`;
@@ -37,7 +38,7 @@
 - **The target comment** is the newest (highest `id`) whose body contains `report.Marker` and whose `user.login` equals `MRIMPACT_COMMENT_AUTHOR` (default `github-actions[bot]`). A refused `PATCH` (403/404) falls back to one `POST`.
 - **Fork warning, verbatim:** `fork pull request: the token is read-only, note written to the job summary`.
 - **Shallow-clone hint, verbatim:** `base commit not in clone: fetch full history (GitLab: GIT_DEPTH: 0; GitHub: actions/checkout with fetch-depth: 0)`.
-- **Download URL default:** `https://github.com/Kevinbarrero/mrimpact/releases/download`, overridable by `MRIMPACT_DOWNLOAD_URL`.
+- **Download URL default:** `https://github.com/Kevinbarrero/mr-impact/releases/download`, overridable by `MRIMPACT_DOWNLOAD_URL`.
 - **Archive name:** `mrimpact_<version without v>_<os>_<arch>.tar.gz` (`.zip` on windows), plus `checksums.txt`. This is GoReleaser's default `name_template` with the project name.
 - **Commit trailer, one line only:** `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
@@ -73,13 +74,13 @@
   - The footer test expects `mrimpact v9.9.9` when `Config.Version = "v9.9.9"`; e2e pins `Config.Version = "test"`.
 - [ ] **Step 2:** Run `go test ./cmd/... ./internal/pipeline/ ./internal/report/`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
-  - Rename with `go mod edit -module github.com/Kevinbarrero/mrimpact`, then rewrite the import paths.
+  - Rename with `go mod edit -module github.com/Kevinbarrero/mr-impact`, then rewrite the import paths.
   - Set the footer format to `mrimpact %s`.
   - Regenerate goldens with `-update` and read the diff: only the footer version line and the shallow hint may change.
 - [ ] **Step 4:**
   - Run `go build ./... && go vet ./... && gofmt -l . && go test ./...`. Expected: PASS.
   - Run `grep -rn "gitlab.com/wh1t3hat" --exclude-dir=.git . | grep -v '^./docs/superpowers/'`. Expected: no output (Review Focus 5).
-- [ ] **Step 5:** Commit `chore: module github.com/Kevinbarrero/mrimpact; version from the build`.
+- [ ] **Step 5:** Commit `chore: module github.com/Kevinbarrero/mr-impact; version from the build`.
 
 ### Task 2: `internal/github` client
 
@@ -176,7 +177,7 @@
 - **Produces:** `install.sh [-b bindir] [version]`.
   - **Defaults:** bindir `./bin`, version `latest`.
   - **Platforms:** os from `uname -s` (`Linux`→`linux`, `Darwin`→`darwin`, `MINGW*|MSYS*|CYGWIN*`→`windows`); arch from `uname -m` (`x86_64|amd64`→`amd64`, `aarch64|arm64`→`arm64`). Anything else → exit 1 naming it.
-  - **`latest`** resolves via the `Location` of `https://github.com/Kevinbarrero/mrimpact/releases/latest`, or `${MRIMPACT_LATEST_URL}` in tests.
+  - **`latest`** resolves via the `Location` of `https://github.com/Kevinbarrero/mr-impact/releases/latest`, or `${MRIMPACT_LATEST_URL}` in tests.
   - **Download and verify:** `${MRIMPACT_DOWNLOAD_URL}/<tag>/<archive>` and `/<tag>/checksums.txt`, then verify with `sha256sum` or `shasum -a 256`.
   - **Messages and exits:** prints `mrimpact <tag> installed to <bindir>/mrimpact`; any failure → a message on stderr and exit 1, with nothing left in bindir.
   - **Tools:** `curl` or `wget`, `tar` or `unzip`. `MRIMPACT_OS`/`MRIMPACT_ARCH` override detection, for tests.
@@ -232,7 +233,7 @@
 
 **Files:**
 - Create:
-  - `LICENSE` (the verbatim Apache-2.0 text; appendix `Copyright 2026 Kevinbarrero`);
+  - `LICENSE` = `git show origin/main:LICENSE` (GitHub's canonical Apache-2.0 text), with only the appendix line `Copyright [yyyy] [name of copyright owner]` replaced by `Copyright 2026 Kevinbarrero`;
   - `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`;
   - `.github/ISSUE_TEMPLATE/bug.yml`, `false-positive.yml`, `feature.yml`;
   - `docs/reference.md`.
@@ -240,13 +241,13 @@
 
 **Interfaces:**
 - **`docs/reference.md`** holds, without loss, every section of today's README after its intro: local usage and flags, configuration, the sensitive table, architecture, the config line, exit codes, and the note's sections. It also gains the GitHub mode, the action inputs, the GitLab template variables, and the warning against `pull_request_target` (it runs untrusted PR code with a write token). The inferred-section wording becomes "no package outside `entry`".
-- **`README.md`** follows spec §6 items 1–9 in order. The real note is a `<details>` block holding the Markdown of the dogfood-style run of mrimpact on its own last commit range (`--base` = the commit before Task 1). Badges point at `github.com/Kevinbarrero/mrimpact`. The gallery is a heading with a placeholder line that Task 7 replaces.
+- **`README.md`** follows spec §6 items 1–9 in order. The real note is a `<details>` block holding the Markdown of the dogfood-style run of mrimpact on its own last commit range (`--base` = the commit before Task 1). Badges point at `github.com/Kevinbarrero/mr-impact`. The gallery is a heading with a placeholder line that Task 7 replaces.
 - **`CHANGELOG.md`:** an `## [Unreleased]` section, then `## [v0.3.0] - unreleased`, with one section each for Added, Changed and Fixed, summarising v1, the signal fixes, reach & focus, architecture and this release.
 
 - [ ] **Step 1: Write a failing test,** `TestDocs_ReferenceKeepsReadmeSections`. It holds a list of the current README's `##`/`###` headings (copy them before editing) and checks each appears in `docs/reference.md` or the new README. It also checks that every flag in `mrimpact --help` appears in `docs/reference.md`.
 - [ ] **Step 2:** Run it. Expected: FAIL.
-- [ ] **Step 3:** Write the files. The Apache-2.0 text must be the exact canonical text (from the Go module cache, e.g. an Apache-licensed module's LICENSE, or from memory and checked against it); say which in the report.
-- [ ] **Step 4:** Run `go test ./...` and check that every link and path in README and reference resolves to a file in the repo or a `github.com/Kevinbarrero/mrimpact` URL. Expected: PASS.
+- [ ] **Step 3:** Write the files. `diff <(git show origin/main:LICENSE) LICENSE` shows only the copyright line.
+- [ ] **Step 4:** Run `go test ./...` and check that every link and path in README and reference resolves to a file in the repo or a `github.com/Kevinbarrero/mr-impact` URL. Expected: PASS.
 - [ ] **Step 5:** Commit `docs: README for the first release, reference, license, changelog, contributing`.
 
 ### Task 7: Real examples on well-known repositories
@@ -290,9 +291,9 @@
   - If GoReleaser is unavailable, build with `go build -ldflags "-X main.version=v0.3.0"` and check `--version`.
 - [ ] **Step 3:**
   - Fast-forward `main` to `feat/release`: `git checkout main && git merge --ff-only feat/release`. `main` is an ancestor today; if the fast-forward is refused, stop and report.
-  - Do not tag. Do not add a remote. Do not push.
+  - Join GitHub's initial commit so the first push is a fast-forward: `git fetch origin && git merge -s ours --allow-unrelated-histories origin/main -m "Merge GitHub's initial commit (LICENSE kept from this history)"`. Check `git diff HEAD~1 HEAD` is empty (the tree is unchanged).
+  - Do not tag. Do not push.
 - [ ] **Step 4:** Report the exact commands the owner runs to publish:
-  1. `git remote add origin git@github.com:Kevinbarrero/mrimpact.git`;
   2. `git push -u origin main`;
   3. set up the GitLab pull mirror;
   4. `git tag v0.3.0 && git push origin v0.3.0`;

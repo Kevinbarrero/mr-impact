@@ -13,7 +13,7 @@ mrimpact works, but a stranger cannot find it, install it or try it:
 - the version is hard-coded;
 - the README is a reference manual.
 
-**Goal:** a first public release, `v0.3.0`, on GitHub (`github.com/Kevinbarrero/mrimpact`) with a GitLab mirror. A Go developer should understand the tool in 10 seconds and run it on their own PR in one minute, on GitHub or on GitLab.
+**Goal:** a first public release, `v0.3.0`, on GitHub (`github.com/Kevinbarrero/mr-impact`) with a GitLab mirror. A Go developer should understand the tool in 10 seconds and run it on their own PR in one minute, on GitHub or on GitLab.
 
 ## 2. Constraints
 
@@ -26,11 +26,12 @@ mrimpact works, but a stranger cannot find it, install it or try it:
 - **Nothing is pushed, tagged or published by the implementation.** The owner adds the remote, pushes, and creates the first tag.
 - **No new Go dependency.** The GitHub client uses `net/http` and `encoding/json`, like `internal/gitlab`.
 - **License:** Apache-2.0, copyright line `Copyright 2026 Kevinbarrero`.
+- **Repository:** `git@github.com:Kevinbarrero/mr-impact.git` (remote `origin`, added 2026-11-10; it holds GitHub's initial commit with the Apache-2.0 `LICENSE`). The module path follows the repo name; the command, the binary and the archive names stay `mrimpact` (GoReleaser `project_name: mrimpact`).
 
 ## 3. Repository and version
 
 - **Branches:** `feat/v1` → `feat/signal-fixes` → `feat/reach-focus` → `feat/architecture` → `feat/release` are merged into `main`, fast-forward where possible. `main` is the release branch.
-- **Module path:** `gitlab.com/wh1t3hat/mrimpact` becomes `github.com/Kevinbarrero/mrimpact`. That covers `go.mod`, every import, the docs, and the test expectations that print the path.
+- **Module path:** `gitlab.com/wh1t3hat/mrimpact` becomes `github.com/Kevinbarrero/mr-impact`. That covers `go.mod`, every import, the docs, and the test expectations that print the path.
 - **Version:**
   - `pipeline.Version` (a const `"0.2.0"`) is replaced by a value set by the binary;
   - `cmd/mrimpact` keeps `var version = "dev"`, set with `-ldflags "-X main.version=v0.3.0"`;
@@ -95,7 +96,7 @@ The README warns against `pull_request_target`, which runs untrusted PR code wit
   - takes the release notes from the matching `CHANGELOG.md` section.
 - **`install.sh` (POSIX sh, in the repo root):**
   - **Usage:** `install.sh [-b bindir] [version]`; the version defaults to `latest`.
-  - **What it does:** resolves the OS/arch, downloads the archive and `checksums.txt` from `${MRIMPACT_DOWNLOAD_URL:-https://github.com/Kevinbarrero/mrimpact/releases/download}`, verifies the SHA-256 (exit 1 on mismatch or a missing entry), and installs `mrimpact` into the bindir.
+  - **What it does:** resolves the OS/arch, downloads the archive and `checksums.txt` from `${MRIMPACT_DOWNLOAD_URL:-https://github.com/Kevinbarrero/mr-impact/releases/download}`, verifies the SHA-256 (exit 1 on mismatch or a missing entry), and installs `mrimpact` into the bindir.
   - **Resolving `latest`:** follows the `releases/latest` redirect.
   - **Dependencies:** `curl` or `wget`, and `sha256sum` or `shasum -a 256`.
 - **`action.yml` (composite):**
