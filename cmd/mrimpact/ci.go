@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Kevinbarrero/mr-impact/internal/github"
 	"github.com/Kevinbarrero/mr-impact/internal/report"
@@ -107,6 +108,10 @@ func detectCI(env func(string) string, readFile func(string) ([]byte, error)) (c
 	pr := ev.PullRequest
 	if pr == nil {
 		return ciEnv{Kind: "local"}, nil
+	}
+	owner, name, ok := strings.Cut(env("GITHUB_REPOSITORY"), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return ciEnv{}, fmt.Errorf("GITHUB_REPOSITORY must be owner/name, got %q", env("GITHUB_REPOSITORY"))
 	}
 	ci := ciEnv{
 		Kind:    "github",
