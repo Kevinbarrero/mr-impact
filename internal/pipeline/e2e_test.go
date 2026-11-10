@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
 	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
 	"gitlab.com/wh1t3hat/mrimpact/internal/report"
@@ -48,6 +50,9 @@ func TestE2E(t *testing.T) {
 		{name: "new_subtree", profiles: []string{"coverage.out"}},
 		{name: "sensitive_zero_config", check: checkSensitiveZeroConfig},
 		{name: "config_file", check: checkConfigFile},
+		{name: "arch_inferred", check: checkArchInferred},
+		{name: "arch_hexagonal", check: checkArchHexagonal},
+		{name: "arch_modular", check: checkArchModular},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -64,12 +69,17 @@ func TestE2E(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			am, err := arch.FromConfig(fc.Architecture)
+			if err != nil {
+				t.Fatal(err)
+			}
 			m, err := Run(context.Background(), Config{
 				Dir: repo, Base: baseSHA, Head: "HEAD", Depth: 2,
 				CoverProfiles: tc.profiles, Timeout: 5 * time.Minute,
 				Now:       func() time.Time { return now },
 				Sensitive: &table, Critical: fc.Critical,
 				File: &fc, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml",
+				Arch: &am,
 			})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -582,5 +592,95 @@ func TestRun_CriticalGlobMatchesNothing(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("warnings = %q, want exactly one critical-glob warning", m.Warnings)
+	}
+}
+
+// archNew renders the new violations as "from -> to file:line" lines.
+func archNew(a *arch.Result) []string {
+	var out []string
+	for _, v := range a.New {
+		out = append(out, fmt.Sprintf("%s -> %s %s:%d iso=%v", v.FromLayer, v.ToLayer, v.Edge.File, v.Edge.Line, v.Isolated))
+	}
+	return out
+}
+
+func checkArchInferred(t *testing.T, m report.Model) {
+	a := m.Arch
+	if a == nil || !a.Inferred || a.BaseMissing {
+		t.Fatalf("Arch = %+v, want an inferred result with a base", a)
+	}
+	// order_test.go imports internal/service/clock (core -> application):
+	// test variants are not in the graph, so neither base nor head counts it.
+	if got := strings.Join(archNew(a), "; "); got != "core -> adapters internal/domain/order/order.go:3 iso=false" || a.Existing != 0 {
+		t.Errorf("New = %s, Existing = %d", got, a.Existing)
+	}
+}
+
+func checkArchHexagonal(t *testing.T, m report.Model) {
+	a := m.Arch
+	if a == nil || a.Inferred || a.Model != "hexagonal" {
+		t.Fatalf("Arch = %+v, want the declared hexagonal model", a)
+	}
+	if got := strings.Join(archNew(a), "; "); got != "adapters -> adapters internal/adapters/http/h.go:4 iso=true" || a.Existing != 1 {
+		t.Errorf("New = %s, Existing = %d", got, a.Existing)
+	}
+}
+
+func checkArchModular(t *testing.T, m report.Model) {
+	a := m.Arch
+	if a == nil || a.Model != "modular" {
+		t.Fatalf("Arch = %+v, want the modular model", a)
+	}
+	// billing -> orders/store is new; billing -> orders (root) stays allowed.
+	if got := strings.Join(archNew(a), "; "); got != "billing -> orders internal/billing/x/x.go:5 iso=false" || a.Existing != 0 {
+		t.Errorf("New = %s, Existing = %d", got, a.Existing)
+	}
+}
+
+// Review Focus 4: a base revision that fails to load does not stop the run;
+// the section shows head conformance and lists no violations.
+func TestRun_ArchBaseNotLoaded(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "arch_hexagonal")
+	base := t.TempDir()
+	if err := os.CopyFS(base, os.DirFS(filepath.Join(dir, "base"))); err != nil {
+		t.Fatal(err)
+	}
+	// go list rejects the module file: the base load fails, head is fine.
+	if err := os.WriteFile(filepath.Join(base, "go.mod"), []byte("module example.com/hx\n\ngo 1.26.0\nrequire (\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo, baseSHA, _ := testutil.MakeRepo(t, base, filepath.Join(dir, "head"))
+	am, _ := arch.Preset("hexagonal")
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA, Arch: &am})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	a := m.Arch
+	if a == nil || !a.BaseMissing || a.HeadConf == nil || a.BaseConf != nil || len(a.New) != 0 || len(a.Coupling) != 0 {
+		t.Fatalf("Arch = %+v, want BaseMissing with head conformance only", a)
+	}
+	out := report.Render(m)
+	const want = "🏛 **Architecture** (hexagonal) · conformance 60.0 % · 5/5 packages classified · (base not loaded: new violations not computed)\n\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing %q in\n%s", want, out)
+	}
+	if strings.Contains(out, "❌") {
+		t.Errorf("violations listed without a base:\n%s", out)
+	}
+	if !strings.Contains(out, "Registrations not compared: the base revision could not be loaded.") {
+		t.Errorf("the base did not fail to load:\n%s", out)
+	}
+}
+
+// A library caller that sets no model gets the inferred one.
+func TestRun_NilArchIsInferred(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "e2e", "arch_inferred")
+	repo, baseSHA, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Arch == nil || !m.Arch.Inferred || len(m.Arch.New) != 1 {
+		t.Errorf("Arch = %+v, want the inferred result", m.Arch)
 	}
 }

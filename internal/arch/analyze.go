@@ -17,6 +17,7 @@ type PkgLayer struct{ Pkg, Layer string }
 // Result is the architecture verdict of one merge request.
 type Result struct {
 	Model              string
+	Module             string // head module path; shown paths are relative to it
 	Inferred           bool
 	Classified, Total  int      // head
 	BaseConf, HeadConf *float64 // nil = n/a (or base missing)
@@ -32,7 +33,7 @@ const maxListed = 10
 // Analyze judges head (and base, when loaded) against m. A nil base sets
 // BaseMissing and computes no new/existing split and no coupling deltas.
 func Analyze(m Model, base *Graph, head Graph, touched []string) Result {
-	r := Result{Model: m.Name, Inferred: m.Inferred, Total: len(head.Packages), BaseMissing: base == nil}
+	r := Result{Model: m.Name, Module: head.Module, Inferred: m.Inferred, Total: len(head.Packages), BaseMissing: base == nil}
 	for _, p := range head.Packages {
 		if _, ok := m.ClassifyNamed(head.Module, p, head.Names[p]); ok {
 			r.Classified++

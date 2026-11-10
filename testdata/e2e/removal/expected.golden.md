@@ -27,6 +27,16 @@
 
 - `Subscribe("hedge", …)` → `svc.onHedge` — `internal/svc/other.go:12`
 
+🏛 **Architecture (inferred — hints, not enforced)** · conformance 100.0 % → 100.0 % · 2/5 packages classified · layers: `cmd/app` → entry
+
+<details><summary>Coupling (1 packages changed)</summary>
+
+| Package | Ca | Ce | I | A | D |
+|---|---|---|---|---|---|
+| `internal/svc` | 1 → 1 | 3 → 1 | 0.75 → 0.50 | 0.00 → 0.00 | 0.25 → 0.50 |
+
+</details>
+
 All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Registered | Entry points | Added-line coverage |

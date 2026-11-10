@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
 	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
@@ -567,5 +568,135 @@ func TestRender_EntryCodeSpans(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
+	}
+}
+
+const archMod = "example.com/app"
+
+func pct(x float64) *float64 { return &x }
+
+func viol(from, to, file string, line int, fl, tl string, iso bool) arch.Violation {
+	return arch.Violation{Edge: arch.Edge{From: archMod + "/" + from, To: archMod + "/" + to, File: file, Line: line},
+		FromLayer: fl, ToLayer: tl, Isolated: iso}
+}
+
+func archModel(a *arch.Result) Model {
+	return Model{Coverage: "static", BaseSHA: "abcdef0",
+		Funcs:     []FuncRow{{Level: risk.Green, Display: "order.F", Kind: "body", CoverText: "n/a"}},
+		Sensitive: []SensitiveRow{{Level: risk.Green, Display: "order.F", APIs: []string{"os.Remove"}, CoverText: "n/a"}},
+		Arch:      a}
+}
+
+func TestRender_ArchDeclared(t *testing.T) {
+	a := &arch.Result{Model: "hexagonal", Module: archMod, Classified: 214, Total: 225,
+		BaseConf: pct(96.0), HeadConf: pct(95.2), Existing: 3,
+		New: []arch.Violation{
+			viol("internal/domain/order", "internal/adapters/pg", "internal/domain/order/order.go", 7, "domain", "adapters", false),
+			viol("internal/adapters/http", "internal/adapters/pg", "internal/adapters/http/h.go", 5, "adapters", "adapters", true),
+		},
+		Coupling: []arch.MetricDelta{{Pkg: archMod + "/internal/domain/order",
+			Base: arch.Metric{Ca: 4, Ce: 1, I: 0.2, A: 0.25, D: 0.55},
+			Head: arch.Metric{Ca: 4, Ce: 2, I: 1.0 / 3, A: 0.25, D: 0.4167}}},
+		TouchedLayers: []arch.PkgLayer{{Pkg: archMod + "/internal/domain/order", Layer: "domain"}},
+	}
+	out := Render(archModel(a))
+	want := "🏛 **Architecture** (hexagonal) · conformance 96.0 % → 95.2 % · 214/225 packages classified\n\n" +
+		"- ❌ new: `domain → adapters` — `internal/domain/order/order.go:7` imports `internal/adapters/pg` (+3 violations already in base)\n" +
+		"- ❌ new: `adapters → adapters` (isolated) — `internal/adapters/http/h.go:5` imports `internal/adapters/pg`\n\n" +
+		"<details><summary>Coupling (1 packages changed)</summary>\n\n" +
+		"| Package | Ca | Ce | I | A | D |\n" +
+		"|---|---|---|---|---|---|\n" +
+		"| `internal/domain/order` | 4 → 4 | 1 → 2 | 0.20 → 0.33 | 0.25 → 0.25 | 0.55 → 0.42 |\n\n" +
+		"</details>\n\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing\n%s\nin\n%s", want, out)
+	}
+	if strings.Contains(out, "layers:") {
+		t.Error("declared mode must not list layers")
+	}
+	sec, arc, table := strings.Index(out, "🔐"), strings.Index(out, "🏛"), strings.Index(out, "| Risk |")
+	if !(sec < arc && arc < table) {
+		t.Errorf("🏛 must come after 🔐 and before the table:\n%s", out)
+	}
+	// A custom model names itself.
+	a.Model = "custom"
+	if out := Render(archModel(a)); !strings.Contains(out, "🏛 **Architecture** (custom) · ") {
+		t.Errorf("custom header missing:\n%s", out)
+	}
+}
+
+func TestRender_ArchInferred(t *testing.T) {
+	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 3, Total: 5,
+		BaseConf: nil, HeadConf: pct(50),
+		New: []arch.Violation{viol("internal/domain/order", "internal/repository/pg", "internal/domain/order/o.go", 3, "core", "adapters", false)},
+		TouchedLayers: []arch.PkgLayer{
+			{Pkg: archMod + "/internal/domain/order", Layer: "core"},
+			{Pkg: archMod + "/internal/repository/pg", Layer: "adapters"},
+		},
+	}
+	out := Render(archModel(a))
+	want := "🏛 **Architecture (inferred — hints, not enforced)** · conformance n/a → 50.0 % · 3/5 packages classified" +
+		" · layers: `internal/domain/order` → core, `internal/repository/pg` → adapters\n\n" +
+		"- ❌ new: `core → adapters` — `internal/domain/order/o.go:3` imports `internal/repository/pg`\n\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing\n%s\nin\n%s", want, out)
+	}
+	if strings.Contains(out, "Coupling") {
+		t.Error("no coupling block expected")
+	}
+}
+
+func TestRender_ArchCap(t *testing.T) {
+	a := &arch.Result{Model: "layered", Module: archMod, Classified: 2, Total: 2, BaseConf: pct(100), HeadConf: pct(10)}
+	for i := range 17 {
+		a.New = append(a.New, viol("internal/domain/x", fmt.Sprintf("internal/handler/h%02d", i), "internal/domain/x/x.go", i+1, "domain", "presentation", false))
+	}
+	out := Render(archModel(a))
+	if n := strings.Count(out, "- ❌ new: "); n != 15 {
+		t.Errorf("%d violation lines, want 15", n)
+	}
+	if !strings.Contains(out, "imports `internal/handler/h14`\n- … and 2 more\n\n") {
+		t.Errorf("missing cap line after the 15th:\n%s", out)
+	}
+	if strings.Contains(out, "already in base") {
+		t.Error("Existing = 0 must say nothing")
+	}
+}
+
+func TestRender_ArchOmittedWhenNothing(t *testing.T) {
+	for name, a := range map[string]*arch.Result{
+		"nil":            nil,
+		"same conf":      {Model: "hexagonal", Module: archMod, BaseConf: pct(90), HeadConf: pct(90), Existing: 4},
+		"both n/a":       {Model: "inferred", Inferred: true, Module: archMod, TouchedLayers: []arch.PkgLayer{{Pkg: archMod + "/internal/db", Layer: "adapters"}}},
+		"base missing 0": {Model: "hexagonal", Module: archMod, BaseMissing: true},
+	} {
+		if out := Render(archModel(a)); strings.Contains(out, "🏛") {
+			t.Errorf("%s: section rendered:\n%s", name, out)
+		}
+	}
+	// Each trigger alone renders it.
+	for name, a := range map[string]*arch.Result{
+		"conf nil→value": {Model: "hexagonal", Module: archMod, HeadConf: pct(100)},
+		"conf changed":   {Model: "hexagonal", Module: archMod, BaseConf: pct(90), HeadConf: pct(80)},
+		"coupling":       {Model: "hexagonal", Module: archMod, BaseConf: pct(90), HeadConf: pct(90), Coupling: []arch.MetricDelta{{Pkg: archMod + "/a", Head: arch.Metric{Ce: 1, I: 1}}}},
+	} {
+		if out := Render(archModel(a)); !strings.Contains(out, "🏛") {
+			t.Errorf("%s: section not rendered:\n%s", name, out)
+		}
+	}
+}
+
+func TestRender_ArchBaseMissing(t *testing.T) {
+	a := &arch.Result{Model: "hexagonal", Module: archMod, Classified: 4, Total: 4, HeadConf: pct(75), BaseMissing: true,
+		TouchedLayers: []arch.PkgLayer{{Pkg: archMod + "/internal/domain", Layer: "domain"}}}
+	out := Render(archModel(a))
+	want := "🏛 **Architecture** (hexagonal) · conformance 75.0 % · 4/4 packages classified · (base not loaded: new violations not computed)\n\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing %q in\n%s", want, out)
+	}
+	a.Inferred, a.Model = true, "inferred"
+	want = "🏛 **Architecture (inferred — hints, not enforced)** · conformance 75.0 % · 4/4 packages classified · layers: `internal/domain` → domain · (base not loaded: new violations not computed)\n\n"
+	if out := Render(archModel(a)); !strings.Contains(out, want) {
+		t.Errorf("missing %q in\n%s", want, out)
 	}
 }

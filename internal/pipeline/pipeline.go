@@ -15,9 +15,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
 	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
@@ -52,6 +54,9 @@ type Config struct {
 	// MR changed.
 	File              *config.Config
 	FileName, FileRel string
+	// Arch is the architecture model the import graph is judged against;
+	// nil → arch.Inferred() (advisory hints).
+	Arch *arch.Model
 }
 
 // Run analyzes Base..Head in cfg.Dir. err is non-nil only for internal
@@ -357,6 +362,15 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		m.RegRewired, m.RegRemoved, m.RegAdded = registrations.Pair(registrations.Diff(b.regs, head))
 	}
 
+	// Architecture: the head import graph judged against the model, and
+	// against the base graph when the base loaded.
+	model := arch.Inferred()
+	if cfg.Arch != nil {
+		model = *cfg.Arch
+	}
+	res := arch.Analyze(model, b.graph, arch.FromPackages(prog.Packages, prog.ModulePath, prog.Rel), touchedPkgs(prog, changes))
+	m.Arch = &res
+
 	// What the removed code used: resolved with the BASE types when the base
 	// loaded, else guessed from syntax (by package and name).
 	names := map[string]bool{}
@@ -559,9 +573,10 @@ func stillDeclared(prog *load.Program, cs []symbols.RemovedCase) []report.Remove
 }
 
 type baseResult struct {
-	regs []registrations.Registration
-	uses map[use]bool // what the deleted lines name
-	err  error
+	regs  []registrations.Registration
+	uses  map[use]bool // what the deleted lines name
+	graph *arch.Graph  // the base import graph; nil when err is set
+	err   error
 }
 
 // loadBase exports the base revision into a temporary directory (the
@@ -586,7 +601,31 @@ func loadBase(ctx context.Context, cfg Config, baseSHA string, deletedLines map[
 			break
 		}
 	}
-	return baseResult{regs: registrations.Find(pkgs, mod, rel), uses: deletedUses(pkgs, rel, deletedLines)}
+	g := arch.FromPackages(pkgs, mod, rel)
+	return baseResult{regs: registrations.Find(pkgs, mod, rel), uses: deletedUses(pkgs, rel, deletedLines), graph: &g}
+}
+
+// touchedPkgs returns the import paths of the head packages holding an added
+// or modified non-test .go file of the MR (sorted, unique).
+func touchedPkgs(prog *load.Program, changes []diff.FileChange) []string {
+	changed := map[string]bool{}
+	for _, c := range changes {
+		if c.Path != "" && !c.IsTest && c.Status != diff.Deleted {
+			changed[c.Path] = true
+		}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range prog.Packages {
+		for _, f := range append(slices.Clone(p.GoFiles), p.CompiledGoFiles...) {
+			if r, ok := prog.Rel(f); ok && changed[r] && !seen[p.PkgPath] {
+				seen[p.PkgPath] = true
+				out = append(out, p.PkgPath)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // loadError marks a load.Load failure (nothing loaded) so Run can choose its
