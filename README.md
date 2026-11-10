@@ -262,7 +262,6 @@ mrimpact is a reviewer's map of a change, not a linter, a coverage service or a 
 - **Reflection and plugins are not followed:** calls through `reflect`, `plugin`, `//go:linkname` or registration by name are not detected.
 - **The Go toolchain is required on the runner**, the version your module needs: the action does not install Go (use `actions/setup-go`), and the GitLab template uses the `golang` image.
 - **Full history:** the base commit must be in the clone (`fetch-depth: 0` / `GIT_DEPTH: 0`).
-- **Registrations are compared by their whole call:** a call that keeps its handlers but gets other arguments (a constructor given one more parameter) is listed as removed and added.
 - **Signatures are compared as written:** replacing a type by an alias of it (`type Completion = string`) reads as a signature change, red when exported.
 - **Framework registries filled in `init`** (e.g. Caddyfile directives) hide test reach: a function dispatched through one can read *not reached* although tests run it; a coverprofile made with `-coverpkg=./...` shows its real coverage.
 

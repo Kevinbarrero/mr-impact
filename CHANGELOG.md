@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Routes:** registration calls render as the route they register (`GET /trade/:id`), with `Group`/`Route`/`PathPrefix`/`Prefix` prefixes followed through locals of the same function, in the Entry points column and every registration block; anything ambiguous keeps the call text.
+- **Registrations changed:** a registration that keeps its call and handler but gains or loses other arguments (a middleware, an option) is listed once under `🔌 **Registrations changed**` as `+ a, − b`, instead of as removed plus added.
+- **Uncovered added lines:** in coverprofile mode, a collapsed list under the table gives the uncovered added line ranges of each 🔴 and 🟡 row.
+
+### Fixed
+
+- A function is sensitive only when an added line touches the sensitive call (multi-line calls included) or it lies in a `critical` package; 🔐 lists only the touched APIs. An unrelated edit to a function that calls `db.Ping()` no longer marks it sensitive.
+- Handlers passed to a variadic registration (`GET("/x", mw, h)`) resolve to that call, so middleware-wrapped routes are registrations and entry points.
+- `make` and `new` type arguments (`make(map[string]int)`) and generic instantiations no longer stop a constructor from being wiring.
+
 ## [v0.3.1] - 2026-11-10
 
 ### Changed

@@ -53,6 +53,7 @@ func TestE2E(t *testing.T) {
 		{name: "arch_inferred", check: checkArchInferred},
 		{name: "arch_hexagonal", check: checkArchHexagonal},
 		{name: "arch_modular", check: checkArchModular},
+		{name: "registration_middleware", profiles: []string{"coverage.out"}, check: checkRegistrationMiddleware},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,6 +173,34 @@ func checkConfigFile(t *testing.T, m report.Model) {
 	const line = "⚙️ .mrimpact.yml: critical `internal/pay/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`)"
 	if !strings.Contains(report.Render(m), "\n"+line+"\n") {
 		t.Errorf("missing config line %q", line)
+	}
+}
+
+// checkRegistrationMiddleware: a middleware added to a route is one changed
+// registration; make(map…) keeps NewService wiring (capped 🟡 although it is
+// untested with a caller); an added line away from db.Ping is not sensitive.
+func checkRegistrationMiddleware(t *testing.T, m report.Model) {
+	if r := rowOf(t, m, "svc.NewService"); r.Level != risk.Yellow || r.Kind != "body · wiring" {
+		t.Errorf("svc.NewService = %v %q, want yellow \"body · wiring\"", r.Level, r.Kind)
+	}
+	if r := rowOf(t, m, "store.Check"); strings.Contains(r.Kind, "sensitive") {
+		t.Errorf("store.Check kind %q: the added line is not on the db.Ping call", r.Kind)
+	}
+	if _, ok := sensitiveOf(m, "store.Check"); ok {
+		t.Error("store.Check must not be listed under 🔐")
+	}
+	out := report.Render(m)
+	for _, want := range []string{
+		"\n- `GET /trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`\n",
+		"| `svc.(*Service).Lookup` | body | 1 | `GET /trade/:id`,",
+		"\n- `svc.(*Service).Lookup` — `svc/svc.go:14-16`\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Registrations removed") || strings.Contains(out, "Registrations added") {
+		t.Errorf("the changed registration is also listed as removed or added:\n%s", out)
 	}
 }
 

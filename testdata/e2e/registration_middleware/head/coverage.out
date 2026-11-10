@@ -1,0 +1,16 @@
+mode: set
+example.com/rm/store/store.go:8.30,9.34 1 0
+example.com/rm/store/store.go:9.34,11.3 1 0
+example.com/rm/store/store.go:12.2,13.12 2 0
+example.com/rm/svc/svc.go:8.39,10.2 1 0
+example.com/rm/svc/svc.go:12.44,13.14 1 1
+example.com/rm/svc/svc.go:13.14,16.3 2 0
+example.com/rm/svc/svc.go:17.2,18.26 2 1
+example.com/rm/api/api.go:10.29,10.30 0 0
+example.com/rm/api/api.go:12.34,14.2 1 0
+example.com/rm/api/api.go:16.38,16.39 0 0
+example.com/rm/api/api.go:18.52,23.2 4 0
+example.com/rm/cmd/main.go:9.13,11.2 1 0
+example.com/rm/router/router.go:13.41,13.60 1 0
+example.com/rm/router/router.go:15.51,15.52 0 0
+example.com/rm/router/router.go:17.52,17.53 0 0

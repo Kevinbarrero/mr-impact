@@ -1,0 +1,4 @@
+api.Register: main.main
+svc.(*Service).Lookup: api.GetTrade
+svc.NewService: main.main
+store.Check:
