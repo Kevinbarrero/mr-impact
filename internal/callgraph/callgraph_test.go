@@ -397,7 +397,7 @@ func TestEntryPoints(t *testing.T) {
 	const dir = "testdata/entries"
 	got := g.EntryPoints("internal/svc/svc.go", lineOf(t, dir, "internal/svc/svc.go", "func helper"), apiPred)
 	want := []Entry{
-		{"registered", `HandleFunc("/x", …)`},
+		{"registered", "/x"}, // mux.HandleFunc("/x", handle), rendered as its route
 		{"api", "api.Do"},
 		{"main", "main.main"},
 	}
@@ -439,5 +439,49 @@ func TestEntryPoints_RegisteredWithoutCall(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("EntryPoints = %v, want it to hold %v", got, want)
+	}
+}
+
+func registeredAt(t *testing.T, fn string) []Site {
+	t.Helper()
+	g := loadEntries(t)
+	const file = "internal/router/router.go"
+	return g.Impact(file, lineOf(t, "testdata/entries", file, "func "+fn+"("), 1).Registered
+}
+
+// A handler passed through a variadic parameter (hs ...func()) sits in an
+// SSA slice: its site is still the call, rendered as the route.
+func TestSite_Variadic(t *testing.T) {
+	got := registeredAt(t, "h")
+	line := lineOf(t, "testdata/entries", "internal/router/router.go", `g.POST("/x"`)
+	want := []Site{{File: "internal/router/router.go", Line: line, Call: "POST /x"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Registered = %+v, want %+v", got, want)
+	}
+}
+
+// Middleware and handler both from the module, in one variadic slice: both
+// resolve to the same call text.
+func TestSite_VariadicTwoModuleFuncs(t *testing.T) {
+	mw, h := registeredAt(t, "mw"), registeredAt(t, "h")
+	if len(mw) != 1 || len(h) != 1 || mw[0].Call == "" || mw[0].Text() != h[0].Text() {
+		t.Errorf("mw = %+v, h = %+v, want one equal non-empty call each", mw, h)
+	}
+}
+
+// A direct (non-variadic) argument keeps today's call text.
+func TestSite_DirectArgUnchanged(t *testing.T) {
+	got := registeredAt(t, "direct")
+	if len(got) != 1 || got[0].Call != `Subscribe("topic.a", …)` {
+		t.Errorf("Registered = %+v, want Subscribe(\"topic.a\", …)", got)
+	}
+}
+
+// A variadic call that is not a route keeps its call text, every argument as
+// written: both module functions share it.
+func TestSite_VariadicNotRoute(t *testing.T) {
+	a, b := registeredAt(t, "u1"), registeredAt(t, "u2")
+	if len(a) != 1 || a[0].Call != "Use(u1, u2)" || len(b) != 1 || b[0].Call != a[0].Call {
+		t.Errorf("u1 = %+v, u2 = %+v, want Use(u1, u2) each", a, b)
 	}
 }

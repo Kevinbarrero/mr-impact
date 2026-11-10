@@ -20,6 +20,7 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 
 	"github.com/Kevinbarrero/mr-impact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/route"
 	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
@@ -269,7 +270,7 @@ func (x *indexer) valueRefs(fn *ssa.Function) {
 func (x *indexer) site(fn *ssa.Function, instr ssa.Instruction, v ssa.Value) Site {
 	s := Site{}
 	at := x.p.Fset.Position(instr.Pos())
-	call, arg := argCall(instr, v)
+	call, arg, variadic := argCall(instr, v)
 	if call != nil {
 		at = x.p.Fset.Position(call.Pos())
 	}
@@ -278,47 +279,87 @@ func (x *indexer) site(fn *ssa.Function, instr ssa.Instruction, v ssa.Value) Sit
 	}
 	s.Line = at.Line
 	if call != nil {
-		s.Call = renderCall(fn, call, arg)
+		s.Call = renderCall(fn, call, arg, variadic)
 	}
 	return s
 }
 
 // argCall finds the call that takes v (directly, or after it is bound as a
 // method value or converted) as an argument, and the argument's index.
-func argCall(instr ssa.Instruction, v ssa.Value) (ssa.CallInstruction, int) {
+// variadic is true when v is an element of the slice built for a variadic
+// parameter (h in g.POST("/x", mw, h)); arg is then that slice's index.
+func argCall(instr ssa.Instruction, v ssa.Value) (call ssa.CallInstruction, arg int, variadic bool) {
 	cur := v
 	for range 4 {
 		if call, ok := instr.(ssa.CallInstruction); ok {
 			for i, a := range call.Common().Args {
 				if a == cur {
-					return call, i
+					return call, i, false
 				}
 			}
-			return nil, 0
+			return nil, 0, false
+		}
+		if st, ok := instr.(*ssa.Store); ok && st.Val == cur {
+			call, arg := variadicCall(st)
+			return call, arg, call != nil
 		}
 		next, ok := instr.(ssa.Value)
 		if !ok {
-			return nil, 0
+			return nil, 0, false
 		}
 		switch instr.(type) {
 		case *ssa.MakeClosure, *ssa.ChangeType, *ssa.MakeInterface, *ssa.Convert:
 		default:
-			return nil, 0
+			return nil, 0, false
 		}
 		refs := next.Referrers()
 		if refs == nil || len(*refs) == 0 {
-			return nil, 0
+			return nil, 0, false
 		}
 		cur, instr = next, (*refs)[0]
+	}
+	return nil, 0, false
+}
+
+// variadicCall follows the SSA shape of a variadic argument list: a store
+// into an element of an array Alloc, sliced, and the slice passed to a call.
+// It returns that call and the slice's argument index, or nil.
+func variadicCall(st *ssa.Store) (ssa.CallInstruction, int) {
+	ia, ok := st.Addr.(*ssa.IndexAddr)
+	if !ok {
+		return nil, 0
+	}
+	alloc, ok := ia.X.(*ssa.Alloc)
+	if !ok || alloc.Referrers() == nil {
+		return nil, 0
+	}
+	for _, r := range *alloc.Referrers() {
+		sl, ok := r.(*ssa.Slice)
+		if !ok || sl.X != ssa.Value(alloc) || sl.Referrers() == nil {
+			continue
+		}
+		for _, sr := range *sl.Referrers() {
+			call, ok := sr.(ssa.CallInstruction)
+			if !ok {
+				continue
+			}
+			for i, a := range call.Common().Args {
+				if a == ssa.Value(sl) {
+					return call, i
+				}
+			}
+		}
 	}
 	return nil, 0
 }
 
 const maxCallText = 90
 
-// renderCall prints the source call expression of call, shortened: the
-// callee's last name, the args as written, args[arg] as "…".
-func renderCall(fn *ssa.Function, call ssa.CallInstruction, arg int) string {
+// renderCall prints the route call registers (route.Render), or else its
+// source call expression, shortened: the callee's last name, the args as
+// written, args[arg] as "…". A variadic element keeps every arg as written,
+// so all module functions in one variadic list share one text.
+func renderCall(fn *ssa.Function, call ssa.CallInstruction, arg int, variadic bool) string {
 	root := fn
 	for root.Parent() != nil {
 		root = root.Parent()
@@ -337,6 +378,12 @@ func renderCall(fn *ssa.Function, call ssa.CallInstruction, arg int) string {
 	})
 	if ce == nil {
 		return ""
+	}
+	if r, ok := route.Render(ce, syn); ok {
+		return r
+	}
+	if variadic {
+		arg = -1
 	}
 	// SSA passes a static method call's receiver as Args[0].
 	if c := call.Common(); !c.IsInvoke() && c.Signature() != nil && c.Signature().Recv() != nil {

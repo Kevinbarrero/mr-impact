@@ -1,0 +1,22 @@
+package router
+
+// G is a fake router group whose verbs take their handlers variadically.
+type G struct{}
+
+func (g *G) POST(p string, hs ...func()) {}
+func (g *G) Use(hs ...func())            {}
+
+// Subscribe takes its handler as a plain (non-variadic) argument.
+func Subscribe(topic string, h func()) {}
+
+func Register(g *G) {
+	g.POST("/x", mw, h)
+	Subscribe("topic.a", direct)
+	g.Use(u1, u2)
+}
+
+func mw()     {}
+func h()      {}
+func direct() {}
+func u1()     {}
+func u2()     {}
