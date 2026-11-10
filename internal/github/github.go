@@ -89,7 +89,10 @@ func (c *Client) Upsert(ctx context.Context, repo string, number int, marker, bo
 				newest = cm.ID
 			}
 		}
-		next = nextLink(hdr.Get("Link"))
+		next, err = c.followable(base, next, hdr.Get("Link"))
+		if err != nil {
+			return err
+		}
 	}
 
 	payload, err := json.Marshal(map[string]string{"body": body})
@@ -105,6 +108,32 @@ func (c *Client) Upsert(ctx context.Context, repo string, number int, marker, bo
 	}
 	_, _, err = c.do(ctx, http.MethodPost, commentsURL, payload)
 	return err
+}
+
+// followable resolves the rel="next" URL of a Link header against the request URL cur and accepts it only
+// when its scheme and host equal base's, so the token never goes to another host. "" means no next page.
+func (c *Client) followable(base, cur, link string) (string, error) {
+	n := nextLink(link)
+	if n == "" {
+		return "", nil
+	}
+	cu, err := url.Parse(cur)
+	if err != nil {
+		return "", fmt.Errorf("github: bad request URL: %w", err)
+	}
+	nu, err := url.Parse(n)
+	if err != nil {
+		return "", fmt.Errorf("github: unparseable pagination link")
+	}
+	nu = cu.ResolveReference(nu)
+	bu, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("github: bad base URL: %w", err)
+	}
+	if !strings.EqualFold(nu.Scheme, bu.Scheme) || !strings.EqualFold(nu.Host, bu.Host) {
+		return "", fmt.Errorf("github: pagination link points to another host")
+	}
+	return nu.String(), nil
 }
 
 var nextRe = regexp.MustCompile(`<([^>]*)>\s*;[^,]*\brel="?next"?`)
