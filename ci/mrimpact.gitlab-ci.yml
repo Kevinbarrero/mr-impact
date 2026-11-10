@@ -1,0 +1,37 @@
+# Include from your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: https://raw.githubusercontent.com/Kevinbarrero/mr-impact/main/ci/mrimpact.gitlab-ci.yml
+#
+# Runners without github.com access can `go install` mrimpact instead.
+mrimpact:
+  image: golang:${MRIMPACT_GO_VERSION}
+  variables:
+    MRIMPACT_GO_VERSION: "1.26"
+    MRIMPACT_VERSION: "latest"
+    MRIMPACT_COVERPROFILE: ""
+    MRIMPACT_RUN_TESTS: "false"
+    MRIMPACT_ARGS: ""
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - |
+      set -eu
+      if [ "$MRIMPACT_RUN_TESTS" = "true" ] && [ -z "$MRIMPACT_COVERPROFILE" ]; then
+        go test ./... -coverprofile=mrimpact.cover
+        MRIMPACT_COVERPROFILE=mrimpact.cover
+      fi
+      ref=$MRIMPACT_VERSION
+      [ "$ref" = "latest" ] && ref=main
+      curl -fsSL "https://raw.githubusercontent.com/Kevinbarrero/mr-impact/${ref}/install.sh" -o install.sh
+      sh install.sh -b "$PWD/.mrimpact-bin" "$MRIMPACT_VERSION"
+      set --
+      for p in $MRIMPACT_COVERPROFILE; do set -- "$@" --coverprofile "$p"; done
+      # shellcheck disable=SC2086  # MRIMPACT_ARGS is word-split on purpose
+      ./.mrimpact-bin/mrimpact "$@" $MRIMPACT_ARGS
+  artifacts:
+    when: always
+    paths:
+      - mrimpact-report.md
+    expire_in: 1 week

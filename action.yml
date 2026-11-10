@@ -1,0 +1,122 @@
+name: mrimpact
+description: Post a change-impact note on pull requests for Go projects.
+author: Kevinbarrero
+branding:
+  icon: activity
+  color: blue
+
+# Prerequisite: Go must already be installed (actions/setup-go) and the
+# repository checked out with full history (actions/checkout, fetch-depth: 0).
+
+inputs:
+  version:
+    description: >-
+      mrimpact version to install. Default: the action's ref when it is a
+      vX.Y.Z tag, else the latest release.
+    required: false
+    default: ""
+  token:
+    description: Token used to post the note (exported as MRIMPACT_TOKEN).
+    required: false
+    default: ${{ github.token }}
+  coverprofile:
+    description: Coverage profile globs, one per line.
+    required: false
+    default: ""
+  run-tests:
+    description: >-
+      When "true" and no coverprofile is given, run go test ./... -coverprofile
+      first. A test failure fails the step.
+    required: false
+    default: "false"
+  fail-on:
+    description: Comma list of gates that exit 1 (red, arch).
+    required: false
+    default: ""
+  config:
+    description: Config file path.
+    required: false
+    default: ""
+  depth:
+    description: Caller depth.
+    required: false
+    default: ""
+  tags:
+    description: Comma-separated build tags.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Extra flags for mrimpact. The value is split on whitespace by the shell
+      (no quoting); use the dedicated inputs for values with spaces.
+    required: false
+    default: ""
+
+outputs:
+  report:
+    description: Path of the Markdown note.
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install mrimpact
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -eu
+        version=$INPUT_VERSION
+        if [ -z "$version" ]; then
+          if printf '%s' "$ACTION_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            version=$ACTION_REF
+          else
+            version=latest
+          fi
+        fi
+        "$GITHUB_ACTION_PATH/install.sh" -b "$RUNNER_TEMP/mrimpact" "$version"
+
+    - name: Run tests with coverage
+      shell: bash
+      env:
+        INPUT_COVERPROFILE: ${{ inputs.coverprofile }}
+        INPUT_RUN_TESTS: ${{ inputs.run-tests }}
+      run: |
+        set -eu
+        if [ "$INPUT_RUN_TESTS" = "true" ] && [ -z "$(printf '%s' "$INPUT_COVERPROFILE" | tr -d '[:space:]')" ]; then
+          go test ./... -coverprofile="$RUNNER_TEMP/mrimpact.cover"
+          echo "$RUNNER_TEMP/mrimpact.cover" > "$RUNNER_TEMP/mrimpact.cover.path"
+        fi
+
+    - name: Run mrimpact
+      id: run
+      shell: bash
+      env:
+        MRIMPACT_TOKEN: ${{ inputs.token }}
+        INPUT_COVERPROFILE: ${{ inputs.coverprofile }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_DEPTH: ${{ inputs.depth }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        set -eu
+        report="$RUNNER_TEMP/mrimpact-report.md"
+        set -- --out "$report"
+        if [ -f "$RUNNER_TEMP/mrimpact.cover.path" ]; then
+          set -- "$@" --coverprofile "$(cat "$RUNNER_TEMP/mrimpact.cover.path")"
+        fi
+        while IFS= read -r line; do
+          [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ] && set -- "$@" --coverprofile "$line"
+        done <<EOF_PROFILES
+        $INPUT_COVERPROFILE
+        EOF_PROFILES
+        [ -n "$INPUT_FAIL_ON" ] && set -- "$@" --fail-on "$INPUT_FAIL_ON"
+        [ -n "$INPUT_CONFIG" ] && set -- "$@" --config "$INPUT_CONFIG"
+        [ -n "$INPUT_DEPTH" ] && set -- "$@" --depth "$INPUT_DEPTH"
+        [ -n "$INPUT_TAGS" ] && set -- "$@" --tags "$INPUT_TAGS"
+        # shellcheck disable=SC2086  # args is documented as word-split
+        set -- "$@" $INPUT_ARGS
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        "$RUNNER_TEMP/mrimpact/mrimpact" "$@"
