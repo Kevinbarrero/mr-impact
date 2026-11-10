@@ -566,14 +566,22 @@ func archShown(a *arch.Result) bool {
 	switch {
 	case a == nil:
 		return false
-	case a.Inferred && a.Classified == 0:
-		return false // the inferred map recognised nothing: no hint to give
+	case a.Inferred && a.Layered == 0:
+		return false // the inferred map placed nothing in a layer (entry alone is no hint)
 	case a.BaseMissing:
 		return a.HeadConf != nil
 	}
 	confChanged := (a.BaseConf == nil) != (a.HeadConf == nil) ||
-		(a.BaseConf != nil && *a.BaseConf != *a.HeadConf)
+		(a.BaseConf != nil && conf(a.BaseConf) != conf(a.HeadConf))
 	return len(a.New) > 0 || confChanged || len(a.Coupling) > 0
+}
+
+// conf renders a conformance percentage (the precision the section shows).
+func conf(c *float64) string {
+	if c == nil {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1f %%", *c)
 }
 
 // writeArch writes the 🏛 section: header, new violations, coupling deltas.
@@ -586,12 +594,6 @@ func writeArch(b *strings.Builder, a *arch.Result) {
 			return "."
 		}
 		return strings.TrimPrefix(p, a.Module+"/")
-	}
-	conf := func(c *float64) string {
-		if c == nil {
-			return "n/a"
-		}
-		return fmt.Sprintf("%.1f %%", *c)
 	}
 	if a.Inferred {
 		b.WriteString("🏛 **Architecture (inferred — hints, not enforced)**")

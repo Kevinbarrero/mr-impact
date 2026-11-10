@@ -155,3 +155,11 @@ func TestAnalyze_TouchedLayersCap(t *testing.T) {
 		t.Fatalf("%+v", r.TouchedLayers)
 	}
 }
+
+func TestAnalyze_LayeredCountsNonEntry(t *testing.T) {
+	g := Graph{Module: "m", Packages: []string{"m/cmd/x", "m/internal/domain"}}
+	r := Analyze(Inferred(), nil, g, nil)
+	if r.Classified != 2 || r.Layered != 1 {
+		t.Errorf("Classified=%d Layered=%d", r.Classified, r.Layered)
+	}
+}

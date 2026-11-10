@@ -197,6 +197,14 @@ func parseArchitecture(name string, a *archShape) (Architecture, error) {
 	if a.ModulesRoot != "" && a.Preset != "modular" {
 		return bad("modules_root %q needs preset modular", a.ModulesRoot)
 	}
+	if a.ModulesRoot != "" {
+		r := cleanGlob(a.ModulesRoot)
+		r = strings.TrimSuffix(r, "/")
+		if r == "." || path.IsAbs(r) || slices.Contains(strings.Split(r, "/"), "..") {
+			return bad("modules_root %q must be a relative directory inside the module", a.ModulesRoot)
+		}
+		out.ModulesRoot = r
+	}
 	if a.Preset == "modular" && (len(out.Layers) > 0 || len(a.Allow) > 0 || len(a.Isolated) > 0) {
 		return bad("preset modular takes no layers, allow or isolated")
 	}

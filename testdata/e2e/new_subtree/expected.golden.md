@@ -3,17 +3,6 @@
 **🔴 1 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `0000000`\
 +3 new functions folded into 1 group
 
-🏛 **Architecture (inferred — hints, not enforced)** · conformance n/a → n/a · 1/2 packages classified · layers: `cmd` → entry
-
-<details><summary>Coupling (2 packages changed)</summary>
-
-| Package | Ca | Ce | I | A | D |
-|---|---|---|---|---|---|
-| `cmd` | 0 → 0 | 0 → 1 | 0.00 → 1.00 | 0.00 → 0.00 | 1.00 → 0.00 |
-| `svc` | — → 1 | — → 0 | — → 0.00 | — → 0.00 | — → 1.00 |
-
-</details>
-
 All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |

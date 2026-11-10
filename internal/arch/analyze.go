@@ -21,6 +21,7 @@ type Result struct {
 	Module             string // head module path; shown paths are relative to it
 	Inferred           bool
 	Classified, Total  int      // head
+	Layered            int      // head: classified packages that are not entry
 	BaseConf, HeadConf *float64 // nil = n/a (or base missing)
 	New                []Violation
 	Existing           int
@@ -39,6 +40,9 @@ func Analyze(m Model, base *Graph, head Graph, touched []string) Result {
 	for _, p := range head.Packages {
 		if _, ok := m.ClassifyNamed(head.Module, p, head.Names[p]); ok {
 			r.Classified++
+			if l, _ := m.ClassifyNamed(head.Module, p, head.Names[p]); l != EntryLayer {
+				r.Layered++
+			}
 		}
 	}
 	judged, viols := m.Judge(head)

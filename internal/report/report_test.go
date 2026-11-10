@@ -626,7 +626,7 @@ func TestRender_ArchDeclared(t *testing.T) {
 }
 
 func TestRender_ArchInferred(t *testing.T) {
-	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 3, Total: 5,
+	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 3, Layered: 3, Total: 5,
 		BaseConf: nil, HeadConf: pct(50),
 		New: []arch.Violation{viol("internal/domain/order", "internal/repository/pg", "internal/domain/order/o.go", 3, "core", "adapters", false)},
 		TouchedLayers: []arch.PkgLayer{
@@ -687,7 +687,7 @@ func TestRender_ArchOmittedWhenNothing(t *testing.T) {
 }
 
 func TestRender_ArchBaseMissing(t *testing.T) {
-	a := &arch.Result{Model: "hexagonal", Module: archMod, Classified: 4, Total: 4, HeadConf: pct(75), BaseMissing: true,
+	a := &arch.Result{Model: "hexagonal", Module: archMod, Classified: 4, Layered: 4, Total: 4, HeadConf: pct(75), BaseMissing: true,
 		TouchedLayers: []arch.PkgLayer{{Pkg: archMod + "/internal/domain", Layer: "domain"}}}
 	out := Render(archModel(a))
 	want := "🏛 **Architecture** (hexagonal) · conformance 75.0 % · 4/4 packages classified · (base not loaded: new violations not computed)\n\n"
@@ -726,7 +726,7 @@ func TestRender_ArchSingularAndNewPackage(t *testing.T) {
 // Ruling R17: an inferred model that classifies nothing at head has no hint
 // to give, whatever else changed.
 func TestRender_ArchInferredNothingClassified(t *testing.T) {
-	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 0, Total: 3,
+	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 0, Layered: 0, Total: 3,
 		Coupling:      []arch.MetricDelta{{Pkg: archMod + "/svc", New: true, Head: arch.Metric{Ca: 1, D: 1}}},
 		CouplingTotal: 1,
 	}
@@ -734,8 +734,36 @@ func TestRender_ArchInferredNothingClassified(t *testing.T) {
 		t.Errorf("section rendered with nothing classified:\n%s", out)
 	}
 	a.Classified = 1
+	a.Layered = 1
 	if out := Render(archModel(a)); !strings.Contains(out, "🏛") {
 		t.Errorf("section missing once a package is classified:\n%s", out)
+	}
+}
+
+// R22: entry alone is no hint for the inferred map.
+func TestRender_ArchInferredEntryOnly(t *testing.T) {
+	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 1, Layered: 0, Total: 2,
+		Coupling:      []arch.MetricDelta{{Pkg: archMod + "/cmd/x", New: true, Head: arch.Metric{Ca: 1, D: 1}}},
+		CouplingTotal: 1,
+	}
+	if out := Render(archModel(a)); strings.Contains(out, "🏛") {
+		t.Errorf("section rendered with only entry classified:\n%s", out)
+	}
+	a.Layered = 1
+	if out := Render(archModel(a)); !strings.Contains(out, "🏛") {
+		t.Errorf("section missing once a layered package exists")
+	}
+}
+
+// Conformance that renders identically (95.0 % → 95.0 %) is no change.
+func TestRender_ArchConformanceRenderedEqualIsNoChange(t *testing.T) {
+	a := &arch.Result{Model: "hexagonal", Module: archMod, BaseConf: pct(95.01), HeadConf: pct(94.96)}
+	if out := Render(archModel(a)); strings.Contains(out, "🏛") {
+		t.Errorf("section rendered for an invisible change:\n%s", out)
+	}
+	a.HeadConf = pct(94.9)
+	if out := Render(archModel(a)); !strings.Contains(out, "🏛") {
+		t.Error("visible change not rendered")
 	}
 }
 
