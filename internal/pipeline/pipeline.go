@@ -357,9 +357,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		m.Warnings = append(m.Warnings, "Registrations not compared: the base revision could not be loaded.")
 	} else {
 		head := registrations.Find(prog.Packages, prog.ModulePath, prog.Rel)
-		rewired, gone, fresh := registrations.Pair(registrations.Diff(b.regs, head))
-		m.RegRewired = rewired
-		m.RegChanged, m.RegRemoved, m.RegAdded = registrations.PairChanged(gone, fresh)
+		m.RegRewired, m.RegChanged, m.RegRemoved, m.RegAdded = registrations.Compare(b.regs, head)
 	}
 
 	// Architecture: the head import graph judged against the model, and

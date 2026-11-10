@@ -5,6 +5,7 @@
 package registrations
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -30,6 +31,10 @@ type Registration struct {
 	// PairChanged pairs on.
 	identity string
 	attrs    []string // the other args as written, in order
+	// handlerText is the handler arg as written ("c.getStatus") and pos the
+	// call's position (file:line:col of its "("): registrations of one call
+	// share pos, and one's handlerText is among another's attrs.
+	handlerText, pos string
 }
 
 // Changed is a registration whose callee, string-literal args and handler
@@ -62,8 +67,16 @@ func Find(pkgs []*packages.Package, modulePath string, rel func(string) (string,
 			if !ok || strings.HasSuffix(file, "_test.go") || ast.IsGenerated(f) {
 				continue
 			}
-			visit := func(root, enclosing ast.Node) {
+			// visit finds the registrations under root, rendered against
+			// enclosing. At package level each func literal is its own
+			// enclosing function (the nearest one).
+			var visit func(root, enclosing ast.Node, pkgLevel bool)
+			visit = func(root, enclosing ast.Node, pkgLevel bool) {
 				ast.Inspect(root, func(n ast.Node) bool {
+					if lit, ok := n.(*ast.FuncLit); ok && pkgLevel && n != root {
+						visit(lit, lit, true)
+						return false
+					}
 					call, ok := n.(*ast.CallExpr)
 					if !ok || isConversion(pkg.TypesInfo, call) {
 						return true
@@ -79,29 +92,19 @@ func Find(pkgs []*packages.Package, modulePath string, rel func(string) (string,
 							continue
 						}
 						seen[dedup] = true
-						out = append(out, newRegistration(call, i, fn, file, at.Line, enclosing))
+						r := newRegistration(call, i, fn, file, at.Line, enclosing)
+						r.pos = fmt.Sprintf("%s:%d:%d", file, at.Line, at.Column)
+						out = append(out, r)
 					}
 					return true
 				})
 			}
-			// Each call is rendered against its enclosing function: a
-			// declaration, or a func literal at package level.
 			for _, d := range f.Decls {
 				if fd, ok := d.(*ast.FuncDecl); ok {
-					visit(fd, fd)
-					continue
+					visit(fd, fd, false)
+				} else {
+					visit(d, d, true)
 				}
-				ast.Inspect(d, func(n ast.Node) bool {
-					if lit, ok := n.(*ast.FuncLit); ok {
-						visit(lit, lit)
-						return false
-					}
-					if _, ok := n.(*ast.CallExpr); ok {
-						visit(n, d)
-						return false
-					}
-					return true
-				})
 			}
 		}
 	}
@@ -129,6 +132,7 @@ func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, l
 		shown[i] = types.ExprString(a)
 		keyed[i] = shown[i]
 		if i == arg {
+			r.handlerText = shown[i]
 			shown[i], keyed[i] = "…", r.Handler
 		} else if !isStringLit(a) {
 			r.attrs = append(r.attrs, shown[i])
@@ -222,6 +226,8 @@ func PairChanged(removed, added []Registration) (changed []Changed, gone, fresh 
 		if nRemoved[r.identity] == 1 && nAdded[r.identity] == 1 {
 			i := headOf[r.identity]
 			plus, minus := without(added[i].attrs, r.attrs), without(r.attrs, added[i].attrs)
+			// Spec §2: when the changed line would list nothing (the same
+			// attributes in another order), fall back to removed + added.
 			if len(plus) > 0 || len(minus) > 0 {
 				used[i] = true
 				changed = append(changed, Changed{From: r, To: added[i], Added: plus, Removed: minus})
@@ -235,7 +241,82 @@ func PairChanged(removed, added []Registration) (changed []Changed, gone, fresh 
 			fresh = append(fresh, a)
 		}
 	}
+	sort.SliceStable(changed, func(i, j int) bool {
+		if changed[i].To.File != changed[j].To.File {
+			return changed[i].To.File < changed[j].To.File
+		}
+		return changed[i].To.Line < changed[j].To.Line
+	})
 	return changed, gone, fresh
+}
+
+// Compare diffs base and head registrations into rewired (Pair), changed
+// (PairChanged), removed and added, then drops what reconcile shows to be
+// the other registration of an already reported call.
+func Compare(base, head []Registration) (rewired []Rewired, changed []Changed, removed, added []Registration) {
+	rewired, gone, fresh := Pair(Diff(base, head))
+	changed, gone, fresh = PairChanged(gone, fresh)
+	return reconcile(rewired, changed, gone, fresh)
+}
+
+// reconcile suppresses cross-registrations: a call passing two module
+// functions is two registrations, each listing the other's argument as an
+// attribute, so one edit would show twice.
+//   - A changed pair at the head position of a rewire, whose added
+//     attributes are only the rewire's new handler and removed ones only its
+//     old handler, is that rewire.
+//   - An added (removed) registration at a changed pair's head (base)
+//     position whose handler is one of its added (removed) attributes is
+//     that change.
+func reconcile(rewired []Rewired, changed []Changed, gone, fresh []Registration) ([]Rewired, []Changed, []Registration, []Registration) {
+	rewiredAt := map[string][]Rewired{}
+	for _, r := range rewired {
+		rewiredAt[r.To.pos] = append(rewiredAt[r.To.pos], r)
+	}
+	var kept []Changed
+	for _, c := range changed {
+		explained := false
+		for _, r := range rewiredAt[c.To.pos] {
+			if only(c.Added, r.To.handlerText) && only(c.Removed, r.From.handlerText) {
+				explained = true
+				break
+			}
+		}
+		if !explained {
+			kept = append(kept, c)
+		}
+	}
+	addedAt, removedAt := map[string]bool{}, map[string]bool{}
+	for _, c := range kept {
+		for _, a := range c.Added {
+			addedAt[c.To.pos+"\x00"+a] = true
+		}
+		for _, a := range c.Removed {
+			removedAt[c.From.pos+"\x00"+a] = true
+		}
+	}
+	var g, f []Registration
+	for _, r := range gone {
+		if !removedAt[r.pos+"\x00"+r.handlerText] {
+			g = append(g, r)
+		}
+	}
+	for _, r := range fresh {
+		if !addedAt[r.pos+"\x00"+r.handlerText] {
+			f = append(f, r)
+		}
+	}
+	return rewired, kept, g, f
+}
+
+// only reports whether every element of xs is s (true for none).
+func only(xs []string, s string) bool {
+	for _, x := range xs {
+		if x != s {
+			return false
+		}
+	}
+	return true
 }
 
 // without returns the elements of xs not matched one-to-one in ys, in xs

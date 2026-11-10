@@ -179,8 +179,7 @@ func TestFind_RouteAndChanged(t *testing.T) {
 	if got := strings.Join(routes, "\n"); got != wantRoutes {
 		t.Errorf("head routes =\n%s\nwant\n%s", got, wantRoutes)
 	}
-	_, gone, fresh := Pair(Diff(base, head))
-	changed, gone, fresh := PairChanged(gone, fresh)
+	_, changed, gone, fresh := Compare(base, head)
 	var got []string
 	for _, c := range changed {
 		got = append(got, c.To.Route+" "+c.To.Handler+" +"+strings.Join(c.Added, ",")+" -"+strings.Join(c.Removed, ","))
@@ -196,7 +195,64 @@ func TestFind_RouteAndChanged(t *testing.T) {
 	if g := describe(gone); g != `GET("/list", c.auth, …) -> trade.(*controller).list` {
 		t.Errorf("gone =\n%s", g)
 	}
-	if g := describe(fresh); g != "GET(\"/:id\", …, c.getStatus) -> trade.(*controller).signatureMiddleware\nGET(\"/all\", c.auth, …) -> trade.(*controller).list" {
+	// The head registration of signatureMiddleware at the changed call is the
+	// same edit: not listed again as added.
+	if g := describe(fresh); g != `GET("/all", c.auth, …) -> trade.(*controller).list` {
 		t.Errorf("fresh =\n%s", g)
+	}
+}
+
+func TestCompare_CrossRegistrationsOfOneCall(t *testing.T) {
+	// Each call passes two module functions; each edit is one rewire, not
+	// also a change of the other registration of the same call.
+	rewired, changed, gone, fresh := Compare(find(t, "testdata/cross/base"), find(t, "testdata/cross/head"))
+	var got []string
+	for _, r := range rewired {
+		got = append(got, r.To.Route+" "+r.From.Handler+" -> "+r.To.Handler)
+	}
+	want := "GET /trade/x trade.(*controller).mwA -> trade.(*controller).mwB\n" +
+		"GET /trade/y trade.(*controller).h -> trade.(*controller).h2"
+	if g := strings.Join(got, "\n"); g != want {
+		t.Errorf("rewired =\n%s\nwant\n%s", g, want)
+	}
+	if len(changed) != 0 || len(gone) != 0 || len(fresh) != 0 {
+		t.Errorf("changed=%+v gone=%+v fresh=%+v", changed, gone, fresh)
+	}
+}
+
+func TestCompare_MiddlewareRemovedOneLine(t *testing.T) {
+	rewired, changed, gone, fresh := Compare(find(t, "testdata/mwgone/base"), find(t, "testdata/mwgone/head"))
+	if len(rewired) != 0 || len(gone) != 0 || len(fresh) != 0 {
+		t.Errorf("rewired=%+v gone=%+v fresh=%+v", rewired, gone, fresh)
+	}
+	if len(changed) != 1 || changed[0].To.Handler != "trade.(*controller).h" ||
+		len(changed[0].Added) != 0 || strings.Join(changed[0].Removed, ",") != "c.mw" {
+		t.Errorf("changed = %+v", changed)
+	}
+}
+
+func TestCompare_ChangedSortedByHeadPosition(t *testing.T) {
+	at := func(r Registration, file string, line int) Registration { r.File, r.Line = file, line; return r }
+	removed := []Registration{
+		at(reg("GET", []string{"/b"}, "h.H", "m"), "a.go", 1),
+		at(reg("GET", []string{"/a"}, "h.H", "m"), "a.go", 2),
+	}
+	added := []Registration{
+		at(reg("GET", []string{"/a"}, "h.H"), "a.go", 5),
+		at(reg("GET", []string{"/b"}, "h.H"), "a.go", 9),
+	}
+	_, changed, _, _ := Compare(removed, added)
+	if len(changed) != 2 || changed[0].To.Line != 5 || changed[1].To.Line != 9 {
+		t.Errorf("changed not in head order: %+v", changed)
+	}
+}
+
+func TestFind_PackageLevelFuncLitIsItsOwnScope(t *testing.T) {
+	var got []string
+	for _, r := range find(t, "testdata/pkglevel") {
+		got = append(got, r.Route)
+	}
+	if g := strings.Join(got, ","); g != "GET /a/q,GET /b/q" {
+		t.Errorf("routes = %q, want GET /a/q,GET /b/q", g)
 	}
 }
