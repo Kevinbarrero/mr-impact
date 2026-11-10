@@ -231,7 +231,12 @@ Flags, configuration, the action inputs, the GitLab variables and every section 
 
 ## Examples
 
-Coming with the first release: notes from real pull requests of well-known Go projects.
+Notes from merged pull requests of well-known Go projects, unedited, with the commands that produced them ([all examples](docs/examples/README.md)):
+
+- [gin-gonic/gin#4800](docs/examples/gin-4800.md): three `net/http.Server` call sites flagged as sensitive, the `ginS` wrappers reached, and a callers list showing that `RunUnix` did not get the new `ReadHeaderTimeout`.
+- [spf13/cobra#1956](docs/examples/cobra-1956.md): the one function left executing `text/template`, reached only from the `Set*Template` API, which is the point of the PR.
+- [caddyserver/caddy#8346](docs/examples/caddy-8346.md): a red row with 84 % coverage, because an exported function of an importable package changed its signature.
+- [prometheus/prometheus#20028](docs/examples/prometheus-20028.md): new HTTP routes, an exported constructor's new parameters and an inferred architecture hint, in static mode; with one misfire (a registration call given new arguments shown as removed and added).
 
 ## How it works
 
@@ -257,6 +262,9 @@ mrimpact is a reviewer's map of a change, not a linter, a coverage service or a 
 - **Reflection and plugins are not followed:** calls through `reflect`, `plugin`, `//go:linkname` or registration by name are not detected.
 - **The Go toolchain is required on the runner**, the version your module needs: the action does not install Go (use `actions/setup-go`), and the GitLab template uses the `golang` image.
 - **Full history:** the base commit must be in the clone (`fetch-depth: 0` / `GIT_DEPTH: 0`).
+- **Registrations are compared by their whole call:** a call that keeps its handlers but gets other arguments (a constructor given one more parameter) is listed as removed and added.
+- **Signatures are compared as written:** replacing a type by an alias of it (`type Completion = string`) reads as a signature change, red when exported.
+- **Framework registries filled in `init`** (e.g. Caddyfile directives) hide test reach: a function dispatched through one can read *not reached* although tests run it; a coverprofile made with `-coverpkg=./...` shows its real coverage.
 
 The full list is under [Limits](docs/reference.md#limits) in the reference.
 
