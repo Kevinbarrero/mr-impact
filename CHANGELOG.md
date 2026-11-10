@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-11-10
+
+### Changed
+
+- The GitHub Action's Marketplace name is now `mrimpact for Go` (the name `mrimpact` is taken in the Marketplace). Usage is unchanged: `uses: Kevinbarrero/mr-impact@v0`.
+
 ## [v0.3.0] - 2026-11-10
 
 The first public release. Earlier versions were internal and never published.

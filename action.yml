@@ -1,4 +1,4 @@
-name: mrimpact
+name: mrimpact for Go
 description: Post a change-impact note on pull requests for Go projects.
 author: Kevinbarrero
 branding:
