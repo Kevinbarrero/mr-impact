@@ -30,8 +30,10 @@ var prefixMethods = map[string]bool{"Group": true, "Route": true, "PathPrefix": 
 // Render returns the route form of call ("POST /trade", "/x", "GET /x") when
 // its callee is a verb and its first argument a string literal, with
 // prefixes resolved inside enclosing (an *ast.FuncDecl or *ast.FuncLit).
-// ok is false when it is not a route or a prefix cannot be resolved without
-// guessing; callers then use their call text.
+// gin's Handle("GET", "/x", h) renders as "GET /x". ok is false when it is
+// not a route or a prefix cannot be resolved without guessing; callers then
+// use their call text. Render does not judge whether a verb-named call is a
+// registration at all: callers pass only registration-shaped calls.
 func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 	var name string
 	var recv ast.Expr
@@ -43,8 +45,8 @@ func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 	default:
 		return "", false
 	}
-	lits := firstLiteral(call)
-	if lits == nil {
+	lit, hasLit := firstLiteral(call)
+	if !hasLit {
 		return "", false
 	}
 	lower := strings.ToLower(name)
@@ -56,8 +58,15 @@ func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 	case lower == "any":
 		verb = "ANY"
 	case pathOnly[lower]:
-		if lower != "match" && hasMethodPrefix(*lits) {
-			return *lits, true
+		if verbs[strings.ToUpper(lit)] && len(call.Args) >= 2 {
+			// gin: Handle("GET", "/x", h)
+			p, isLit := stringLit(call.Args[1])
+			if !isLit {
+				return "", false
+			}
+			verb, lit = strings.ToUpper(lit), p
+		} else if lower != "match" && hasMethodPrefix(lit) {
+			return lit, true
 		}
 	default:
 		return "", false
@@ -71,7 +80,7 @@ func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 			return "", false
 		}
 	}
-	p := join(prefixes, *lits)
+	p := join(prefixes, lit)
 	if verb == "" {
 		return p, true
 	}
@@ -102,15 +111,11 @@ func stringLit(e ast.Expr) (string, bool) {
 }
 
 // firstLiteral returns call's first argument when it is a string literal.
-func firstLiteral(call *ast.CallExpr) *string {
+func firstLiteral(call *ast.CallExpr) (string, bool) {
 	if len(call.Args) == 0 {
-		return nil
+		return "", false
 	}
-	s, ok := stringLit(call.Args[0])
-	if !ok {
-		return nil
-	}
-	return &s
+	return stringLit(call.Args[0])
 }
 
 // hasMethodPrefix reports whether s starts with an HTTP method and a space
@@ -181,18 +186,26 @@ func (r resolver) prefixes(e ast.Expr, limit int) ([]string, bool) {
 		case *ast.CallExpr:
 			sel, ok := x.Fun.(*ast.SelectorExpr)
 			if !ok {
-				return reverse(rev), len(rev) <= maxPrefixes
+				return reverse(rev), true // newGroup(): a call result is a root
 			}
-			if sel.Sel.Name == "Subrouter" && len(x.Args) == 0 {
+			switch {
+			case sel.Sel.Name == "Subrouter" && len(x.Args) == 0:
 				e = sel.X
-				continue
+			case prefixMethods[sel.Sel.Name]:
+				lit, ok := firstLiteral(x)
+				if !ok {
+					return nil, false
+				}
+				rev = append(rev, lit)
+				e = sel.X
+			default:
+				// pkg.New() is a root; anything called on a local or on another
+				// call (.Use(mw), .With(mw)) may change the prefix: undecided.
+				if id, isID := sel.X.(*ast.Ident); !isID || r.isLocal(id.Name) {
+					return nil, false
+				}
+				return reverse(rev), true
 			}
-			lit := firstLiteral(x)
-			if !prefixMethods[sel.Sel.Name] || lit == nil {
-				return reverse(rev), len(rev) <= maxPrefixes
-			}
-			rev = append(rev, *lit)
-			e = sel.X
 			continue
 		case *ast.Ident:
 			next, add, root, ok := r.identStep(x, limit)
@@ -236,11 +249,11 @@ func (r resolver) identStep(id *ast.Ident, limit int) (next step, add *string, r
 		if !isSel || sel.Sel.Name != "Route" || len(call.Args) != 2 || call.Args[1] != ast.Expr(lit) {
 			return step{}, nil, true, true // another kind of parameter: a root
 		}
-		p := firstLiteral(call)
-		if p == nil {
+		p, isStr := firstLiteral(call)
+		if !isStr {
 			return step{}, nil, false, false
 		}
-		return step{expr: sel.X, limit: i - 1}, p, false, true
+		return step{expr: sel.X, limit: i - 1}, &p, false, true
 	}
 
 	var rhs ast.Expr
@@ -275,30 +288,50 @@ func (r resolver) identStep(id *ast.Ident, limit int) (next step, add *string, r
 	switch {
 	case n > 1:
 		return step{}, nil, false, false
-	case n == 0 || rhs == nil || !isPrefixExpr(rhs):
+	case n == 0 || rhs == nil:
+		return step{}, nil, true, true
+	}
+	if _, isCall := rhs.(*ast.CallExpr); !isCall {
 		return step{}, nil, true, true
 	}
 	return step{expr: rhs, limit: limit}, nil, false, true
 }
 
-// isPrefixExpr reports whether e is a prefix call, optionally ending in
-// Subrouter().
-func isPrefixExpr(e ast.Expr) bool {
-	for {
-		c, ok := e.(*ast.CallExpr)
-		if !ok {
-			return false
+// isLocal reports whether name is a parameter, receiver or assigned
+// variable anywhere in the enclosing function.
+func (r resolver) isLocal(name string) bool {
+	local := false
+	fields := func(fl *ast.FieldList) {
+		if fl == nil {
+			return
 		}
-		sel, ok := c.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return false
+		for _, f := range fl.List {
+			for _, n := range f.Names {
+				local = local || n.Name == name
+			}
 		}
-		if sel.Sel.Name == "Subrouter" && len(c.Args) == 0 {
-			e = sel.X
-			continue
-		}
-		return prefixMethods[sel.Sel.Name] && firstLiteral(c) != nil
 	}
+	if d, ok := r.enclosing.(*ast.FuncDecl); ok {
+		fields(d.Recv)
+	}
+	ast.Inspect(r.enclosing, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.FuncType:
+			fields(s.Params)
+		case *ast.AssignStmt:
+			for _, l := range s.Lhs {
+				if id, ok := l.(*ast.Ident); ok && id.Name == name {
+					local = true
+				}
+			}
+		case *ast.ValueSpec:
+			for _, id := range s.Names {
+				local = local || id.Name == name
+			}
+		}
+		return !local
+	})
+	return local
 }
 
 func hasParam(lit *ast.FuncLit, name string) bool {

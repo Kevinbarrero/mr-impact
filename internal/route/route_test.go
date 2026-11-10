@@ -75,6 +75,13 @@ func TestRender(t *testing.T) {
 		{"RootParameterNoPrefix", `func setup(g *Group) { g.GET("/x", h) }`, "GET", "GET /x", true},
 		{"RootCallResultNoPrefix", `func setup() { g := newGroup(); g.GET("/x", h) }`, "GET", "GET /x", true},
 		{"FiveLevelsTooDeep", `func setup(r *R) { a := r.Group("/1"); b := a.Group("/2"); c := b.Group("/3"); d := c.Group("/4"); e := d.Group("/5"); e.GET("/x", h) }`, "GET", "", false},
+		{"GroupNonLiteralChained", `func setup(r *R) { r.Group(p).GET("/x", h) }`, "GET", "", false},
+		{"GroupNonLiteralLocal", `func setup(r *R) { g := r.Group(prefix); g.GET("/x", h) }`, "GET", "", false},
+		{"UseInChain", `func setup(r *R) { r.Group("/a").Use(mw).GET("/x", h) }`, "GET", "", false},
+		{"UseOnLocalAssigned", `func setup(r *R) { g := r.Group("/a"); h2 := g.Use(mw); h2.GET("/x", h) }`, "GET", "", false},
+		{"PackageCallRoot", `func setup() { r := gin.Default(); r.GET("/x", h) }`, "GET", "GET /x", true},
+		{"GinHandleMethod", `func setup(r *R) { g := r.Group("/a"); g.Handle("get", "/x", h) }`, "Handle", "GET /a/x", true},
+		{"GinHandleNonLiteralPath", `func setup(r *R) { r.Handle("GET", p, h) }`, "Handle", "", false},
 		{"FourLevels", `func setup(r *R) { a := r.Group("/1"); b := a.Group("/2"); c := b.Group("/3"); d := c.Group("/4"); d.GET("/x", h) }`, "GET", "GET /1/2/3/4/x", true},
 	}
 	for _, c := range cases {
