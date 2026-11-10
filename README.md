@@ -1,178 +1,265 @@
 # mrimpact
 
-`mrimpact` runs in a GitLab merge request pipeline on a Go repository. It finds the functions changed by the MR, their callers (call graph, configurable depth) and their test coverage, and posts one risk-ranked note on the MR. The note is updated in place on every pipeline run.
+**One comment on every Go pull request: what changed, who calls it, which entry points reach it, and whether a test covers it.**
 
-## Local usage
+[![CI](https://github.com/Kevinbarrero/mr-impact/actions/workflows/ci.yml/badge.svg)](https://github.com/Kevinbarrero/mr-impact/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Kevinbarrero/mr-impact)](https://github.com/Kevinbarrero/mr-impact/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Kevinbarrero/mr-impact.svg)](https://pkg.go.dev/github.com/Kevinbarrero/mr-impact)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Kevinbarrero/mr-impact)](https://goreportcard.com/report/github.com/Kevinbarrero/mr-impact)
+[![License](https://img.shields.io/github/license/Kevinbarrero/mr-impact)](LICENSE)
 
-```sh
-mrimpact --base origin/master
+`mrimpact` reads a Go pull request (GitHub) or merge request (GitLab), builds the call graph of both revisions and posts one risk-ranked note, updated in place on every run. Zero config, offline, deterministic, no AI.
+
+## A real note
+
+This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb160f5 --no-post`, no coverprofile, so test reach is static), unedited:
+
+<details>
+<summary>mrimpact on its own change: 15 functions changed, 🔴 0 · 🟡 1 · 🟢 8</summary>
+
+<!-- mrimpact:v1 -->
+### 🔍 MR impact — 15 functions changed
+**🔴 0 · 🟡 1 · 🟢 8** · coverage: `static` · base `fb160f5`\
++6 new functions folded into 1 group
+
+🔐 **Sensitive code changed** (3):
+
+- 🟢 `github.(*Client).once` — net/http.(*Client).Do · reached by test
+- 🟢 `main.appendSummary` — os.OpenFile · reached by test
+- 🟡 `main.run` — os.WriteFile · reached by test
+
+| Risk | Function | Change | Callers | Entry points | Added-line coverage |
+|---|---|---|---|---|---|
+| 🟡 | `main.run` | body (branch removed) · sensitive | 1 | main | reached by test |
+| 🟢 | `main.appendSummary` | new · sensitive | 2 | main | reached by test |
+| 🟢 | `main.detectCI` | new | 2 | main | reached by test |
+| 🟢 | `main.githubPoster.Upsert` | new · +6 | 2 | main | reached by test |
+| 🟢 | `main.gitlabPoster.Upsert` | new | 2 | main | reached by test |
+| 🟢 | `main.resolveVersion` | new | 2 | main | reached by test |
+| 🟢 | `pipeline.Run` | body | 2 | main | reached by test |
+| 🟢 | `report.writeFooter` | body · wiring | 2 (2 pkgs) | main | reached by test |
+| 🟢 | `github.(*statusError).Error` | new · wiring | 0 | — | reached by test |
+
+<details><summary>main.githubPoster.Upsert +6 new</summary>
+
+- 🟢 `github.(*Client).Upsert` · new · reached by test — `internal/github/github.go`
+- 🟢 `github.(*Client).do` · new · reached by test — `internal/github/github.go`
+- 🟢 `github.(*Client).followable` · new · reached by test — `internal/github/github.go`
+- 🟢 `github.(*Client).once` · new · sensitive · reached by test — `internal/github/github.go`
+- 🟢 `github.nextLink` · new · reached by test — `internal/github/github.go`
+- 🟢 `github.snippet` · new · reached by test — `internal/github/github.go`
+
+</details>
+
+📝 Declarations changed: 18 in 5 files
+
+<details><summary>Declarations (18)</summary>
+
+- `cmd/mrimpact/ci.go` (6): `type poster`, `type githubUpserter`, `var newGitHubClient`, `type ciEnv`, `type gitlabPoster`, `type githubPoster`
+- `cmd/mrimpact/main.go` (1): `var version`
+- `internal/diff/git.go` (1): `var ErrShallow`
+- `internal/github/github.go` (8): `const defaultBaseURL`, `const defaultAuthor`, `const maxPages`, `var retryDelays`, `type Client`, `type comment`, `type statusError`, `var nextRe`
+- `internal/pipeline/pipeline.go` (2): `const Version`, `type Config`
+
+</details>
+
+🧪 Tests touched in this MR: 20 files
+
+<details><summary>Test files (20)</summary>
+
+- `cmd/mrimpact` (2): `ci_test.go`, `main_test.go`
+- `internal/arch` (2): `fromconfig_test.go`, `graph_test.go`
+- `internal/callgraph` (1): `callgraph_test.go`
+- `internal/configfields` (1): `configfields_test.go`
+- `internal/coverage` (1): `coverage_test.go`
+- `internal/diff` (2): `export_test.go`, `git_test.go`
+- `internal/github` (1): `github_test.go`
+- `internal/pipeline` (3): `e2e_test.go`, `entry_test.go`, `group_test.go`
+- `internal/registrations` (1): `registrations_test.go`
+- `internal/releasetest` (2): `install_test.go`, `release_files_test.go`
+- `internal/report` (1): `report_test.go`
+- `internal/risk` (1): `risk_test.go`
+- `internal/sensitive` (1): `sensitive_test.go`
+- `internal/symbols` (1): `symbols_test.go`
+
+</details>
+
+**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
+
+```mermaid
+flowchart RL
+  n0["🟡 main.run"]:::yellow
+  n1["main.main"]
+  n2["🟢 main.appendSummary"]:::green
+  n3["🟢 main.detectCI"]:::green
+  n4["🟢 main.githubPoster.Upsert"]:::green
+  n5["🟢 main.gitlabPoster.Upsert"]:::green
+  n6["🟢 main.resolveVersion"]:::green
+  n7["🟢 pipeline.Run"]:::green
+  n8["🟢 report.writeFooter"]:::green
+  n9["report.Render"]
+  n10["🟢 github.(*statusError).Error"]:::green
+  n1 --> n0
+  n9 --> n8
+  n0 --> n2
+  n0 --> n3
+  n0 --> n4
+  n0 --> n5
+  n0 --> n6
+  n0 --> n7
+  subgraph legend ["Legend"]
+    direction LR
+    lr["🔴 changed, not tested"]:::red
+    ly["🟡 partly tested / branch removed"]:::yellow
+    lg["🟢 changed, tested"]:::green
+    lc["caller, not changed"]
+  end
+  classDef red fill:#fdd,stroke:#c00
+  classDef yellow fill:#ffd,stroke:#c90
+  classDef green fill:#dfd,stroke:#2a2
 ```
 
-Prints the note to stdout and writes it to `mrimpact-report.md`. Nothing is posted unless the GitLab CI variables are present. Run it from the module root (or pass `--dir`), with the head revision checked out.
+<details><summary>All callers (15)</summary>
 
-Flags: `--dir`, `--base` (env `CI_MERGE_REQUEST_DIFF_BASE_SHA`), `--head HEAD`, `--depth 2`, `--coverprofile` (repeatable glob), `--tags a,b`, `--timeout 5m`, `--fail-on red,arch`, `--strict`, `--skip-empty`, `--no-post`, `--out mrimpact-report.md`, `--config <path>`.
+**`main.run`** (1)
 
-## Configuration
+- depth 1: `main.main`
 
-No file is needed. With no config file and no flag, every check runs on its built-in defaults, including the sensitive-API table below. A missing `.mrimpact.yml` is the normal case: nothing is printed and nothing is added to the note (unless the MR deleted one: see below).
+**`main.appendSummary`** (2)
 
-To add project knowledge, put an optional `.mrimpact.yml` at the module root (`--dir`), or name another file with `--config <path>`:
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-```yaml
-critical:                 # package globs; functions in matching packages are sensitive
-  - internal/payment/...  # module-relative, or a full import path
-sensitive:
-  add:                    # patterns added to the default table
-    - github.com/shopspring/decimal.*
-    - example.com/ledger.(*Ledger).Post
-  remove:                 # patterns removed from the default table, matched textually
-    - os/exec.*
-```
+**`main.detectCI`** (2)
 
-- Every key is optional; an empty or comments-only file equals no file.
-- Globs: `internal/x/...` matches the package and everything below it; `internal/x/*` matches one path segment (`path.Match`); a glob without the module path is joined to it. Globs are cleaned (`path.Clean`; a leading `./` and a trailing `/` are accepted). A glob that matches no loaded package is listed under the note's limits: `critical glob "<g>" matches no package`.
-- Patterns: `pkgpath.Name`, `pkgpath.*`, `pkgpath.(*T).M` or `pkgpath.(T).M`; `*` in the method position matches any method, a trailing `*` a prefix (`Execute*`); `pkgpath/...` matches the package and every package below it. Callees are matched by their type-checked package path and name, so aliased imports and methods called through the type are found.
-- The note states the config when it matters: whenever it removes defaults or names `critical` globs, one line under the header reads `⚙️ .mrimpact.yml: critical … · removes … · adds …`. When the MR changed the file (compared with its base version; a missing base file is the empty config), the line ends ` — changed in this MR (MR removes from defaults: os/exec.*)`, listing what the MR added or dropped, or `(base config unreadable)` when the base version does not parse; the base file never fails the run.
-- Parsing is strict. An unknown key, a wrong type, a bad glob, a malformed pattern, a `remove` entry that is not in the default table, or `--config` naming a missing file is a usage error: one line `mrimpact: config: …` on stderr, exit 2, and no note is written or posted.
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-Default sensitive table (the standard library, plus a few common data-access and crypto libraries, matched by import path; routers such as gin, echo or chi are not in it):
+**`main.githubPoster.Upsert`** (2)
 
-| Area | Patterns |
-|---|---|
-| Process / OS | `os/exec.*`, `syscall.*`, `unsafe.*`, `plugin.*`, `os.(*Process).*`, `os.StartProcess` |
-| Files | `os.Remove`, `os.RemoveAll`, `os.WriteFile`, `os.Create`, `os.OpenFile`, `os.Chmod`, `os.Chown`, `os.Rename`, `os.Symlink`, `os.Link` |
-| Reflection | `reflect.(Value).Set*`, `reflect.(Value).Send`, `reflect.(Value).TrySend`, `reflect.(Value).Clear`, `reflect.Copy`, `reflect.Swapper`, `reflect.NewAt`, `reflect.(Value).UnsafePointer`, `reflect.(Value).UnsafeAddr`, `reflect.(Value).Pointer`, `reflect.(Value).Call*`, `reflect.(Value).Method`, `reflect.(Value).MethodByName`, `reflect.(Type).MethodByName`, `reflect.MakeFunc` (mutating, unsafe and dynamic-dispatch APIs; read-only `TypeOf`, `ValueOf`, `DeepEqual`, `Kind`, `Interface` are not sensitive) |
-| Crypto / TLS | `crypto/...`, `crypto/tls.Config` (a composite literal counts) |
-| SQL | `database/sql.(*DB).*`, `database/sql.(*Tx).*`, `database/sql.(*Conn).*`, `database/sql.(*Stmt).*` |
-| HTTP | `net/http.ListenAndServe`, `net/http.ListenAndServeTLS`, `net/http.(*Server).*`, `net/http.(*Client).*`, `net/http.Get`, `net/http.Post`, `net/http.PostForm`, `net/http.Head`, `net/http.Handle`, `net/http.HandleFunc` |
-| Data access / crypto libraries | `github.com/jackc/pgx/v5.(*Conn).*`, `github.com/jackc/pgx/v5.(Tx).*`, `github.com/jackc/pgx/v5/pgxpool.(*Pool).*`, `github.com/jackc/pgx/v5/pgxpool.(*Conn).*`, `github.com/jackc/pgx/v5/pgxpool.(*Tx).*`, the same for `github.com/jackc/pgx/v4`, `github.com/jmoiron/sqlx.(*DB).*`, `github.com/jmoiron/sqlx.(*Tx).*`, `gorm.io/gorm.(*DB).*`, `golang.org/x/crypto/...` |
-| Deserialization / templates | `encoding/gob.*`, `encoding/xml.(*Decoder).*`, `encoding/xml.Unmarshal`, `text/template.(*Template).Execute*`, `html/template.(*Template).Execute*` |
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-## Architecture
+**`main.gitlabPoster.Upsert`** (2)
 
-mrimpact judges the module's package import graph against layer rules and reports what the MR changed in it, in a 🏛 section of the note.
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-**Zero config: hints.** With no `architecture` block, an inferred layer map runs. A package belongs to the layer owning the shallowest module-relative path segment that matches one of its directory names: `core` (domain, core, entity, entities, model, models), `ports` (port, ports), `application` (usecase, usecases, application, app, service, services), `adapters` (adapter, adapters, infrastructure, infra, repository, repositories, storage, store, persistence, transport, http, grpc, handler, handlers, controller, controllers, api, web, db). The rules: ports → core; application → ports, core; adapters → application, ports, core; every layer may import itself. A package named `main`, or one with a `cmd` segment, is `entry`: it may import anything and nothing may import it. A package that matches nothing is unclassified and never judged. The section is labelled *inferred — hints, not enforced* and lists the layer each touched package was mapped to; inferred results never change a rating or the exit code.
+**`main.resolveVersion`** (2)
 
-Only import paths and directory names are used. Edges are module-internal imports of non-test packages (test files and external test packages are ignored), one per package pair, positioned at the first file in name order that imports the target.
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-**Presets.** Declare one to enforce its rules (`→` = may import):
+**`pipeline.Run`** (2)
 
-| Preset | Layers | Rules |
-|---|---|---|
-| `clean` | entities, usecases, adapters, frameworks | usecases → entities; adapters → usecases, entities; frameworks → adapters, usecases, entities |
-| `onion` | domain, domainservices, application, infrastructure, ui | each outer layer → the inner ones (ui and infrastructure → application, domainservices, domain) |
-| `hexagonal` | domain, ports, application, adapters (isolated) | ports → domain; application → ports, domain; adapters → application, ports, domain |
-| `ddd` | domain, application, infrastructure, interfaces | application → domain; infrastructure, interfaces → application, domain |
-| `layered` | presentation, service, repository, model | presentation → service, repository, model; service → repository, model; repository → model |
-| `mvc` | controller, view, model | controller → view, model; view → model |
-| `pipeline` | one layer per `stages` entry | a stage imports only earlier stages; each stage is isolated |
-| `modular` | one per child directory of `modules_root` (default `internal`) | another module may be imported only through its root package (`internal/orders`, not `internal/orders/store`); inside a module anything goes |
+- depth 1: `main.run`
+- depth 2: `main.main`
 
-An **isolated** layer's packages may import each other only inside one unit (the layer's directory plus one more segment: `internal/controller/http/x` → `internal/controller/http/common`) or along one directory path (`adapters/pg` → `adapters/pg/rows`), never between two units (`adapters/http` → `adapters/pg`). A layer matched by a glob has no unit: directory path only.
+**`report.writeFooter`** (2)
 
-In a flat layout the unit is the package itself, so `internal/handlers/user` → `internal/handlers/common` is flagged `(isolated)`. Workaround: put the shared package in a layer of its own and `allow` the adapter layer to import it:
+- depth 1: `report.Render`
+- depth 2: `main.run`
 
-```yaml
-architecture:
-  preset: hexagonal
-  layers: {shared: [internal/handlers/common]}
-  allow: ["adapters -> shared"]
-```
+</details>
 
-**Configuration** (all optional, strict like the rest of the file):
-
-```yaml
-architecture:
-  preset: hexagonal               # clean | onion | hexagonal | ddd | layered | mvc | pipeline | modular
-  layers:                         # globs per layer name; adds globs to a preset layer, or defines a new layer
-    domain: [internal/core/...]
-  allow: ["adapters -> ports"]    # extra edges "<layer> -> <layer>"
-  isolated: [adapters]            # extra isolated layers
-  stages: [ingest, transform, load]   # pipeline only (required there)
-  modules_root: internal          # modular only
-```
-
-- `layers` without a `preset` is a custom architecture of exactly those layers: a layer may import only itself and what `allow` lists; the entry rule still applies. Globs win over directory names, the first declared layer first.
-- `allow` entries are written `a -> b`, with a space on each side of the arrow (`a->b` is refused).
-- An unknown preset, an `allow` or `isolated` entry naming an unknown layer, `stages` without `preset: pipeline` (or `pipeline` without `stages`), `modules_root` without `preset: modular` (or an absolute, `..` or `.` one), `entry` named in `allow` or `isolated` (it is implicit), or a duplicate layer is a config error: exit 2.
-
-**The section** shows the model, conformance (conforming judged edges ÷ judged edges, base → head, `n/a` when nothing is judged) and how many packages were classified; then each **new** violating edge (up to 15, by file and line): `- ❌ new: \`domain → adapters\` — \`internal/domain/order/order.go:7\` imports \`internal/adapters/pg\``, with `(isolated)` when the isolation rule was broken, and the first line counting the violations already in the base. Under *Coupling*, Martin's metrics (Ca, Ce, instability I, abstractness A, distance D) base → head for touched packages (holding an added, modified, deleted or moved non-test file) whose Ca, Ce, A or D changed, at most 10; a package new in the MR shows `—` on the base side. The section appears only when there is a new violation, a conformance change or a metric change; in inferred mode, never when no package was classified. When the base revision cannot be loaded, it shows head conformance only and `(base not loaded: new violations not computed)`.
-
-## CI integration
-
-```yaml
-mrimpact:
-  stage: report
-  needs: [test]            # test job publishes coverage.out as artifact
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  variables:
-    GIT_DEPTH: 0
-  script:
-    - mrimpact --coverprofile coverage.out
-  artifacts:
-    paths: [mrimpact-report.md]
-    when: always
-```
-
-The CI image must provide Go 1.26 (e.g. `golang:1.26`).
-
-## Token setup
-
-1. Create a Project Access Token with the `api` scope and the Reporter role.
-2. Add it as a masked CI/CD variable named `MRIMPACT_TOKEN`.
-
-The note is posted only when `CI_MERGE_REQUEST_IID`, `CI_PROJECT_ID` and `CI_API_V4_URL` are set (GitLab sets them in MR pipelines).
-
-## Shadow mode
-
-`mrimpact --no-post` runs the full analysis, prints the note and writes `mrimpact-report.md` but never contacts GitLab. Use it to evaluate the output as a job artifact before enabling posting.
-
-## Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success, or degraded/internal failure without `--strict` (the failure is reported on stderr and in the note) |
-| 1 | `--fail-on red` and at least one red function, or `--fail-on arch` and a new violation of the declared architecture (never for an inferred model or a missing base) |
-| 2 | Usage error (including a config error), or `--strict` with an internal failure (analysis, posting or `--out` write error) |
-
-`--fail-on` takes a comma list of `red` and `arch` (empty items are ignored; anything else is a usage error). `--depth` must be at least 1 and `--timeout` greater than 0.
-
-## What the note shows
-
-In order, each section only when it has something:
-
-- **Header**: how many functions changed, the 🔴/🟡/🟢 tally of the table's rows and, when new code was grouped, `+N new functions folded into M groups` (`1 group` for one).
-- **Config line**: `⚙️ .mrimpact.yml: …` when the config removes defaults, names critical globs, declares an architecture, or was changed by the MR (see Configuration).
-- **Coverage hint**: `ℹ️ N functions are covered only by tests in other packages; …` when changed functions have added lines with 0 % in the coverprofile although tests in another package reach them. A coverprofile made without `-coverpkg` counts same-package tests only; run `go test -coverpkg=./... -coverprofile=…` for line coverage. Their cover cell reads `0 % in profile · reached by tests in <pkg>`, and they count as partly tested, not untested.
-- **Removed `case`, value still exists**: a `case` removed from a switch on a named constant or type that is still declared; those values now go to `default`, or match no case.
-- **Now unused / now only used by tests**: functions the removed code used that nothing reachable from an entry point (`main`, `init`, exported API) calls or takes as a value any more, plus what only they reached. When the base revision loads, what the removed code used is resolved with its types; otherwise it is matched by package and name.
-- **Config no longer read**: struct fields with a config tag (`envconfig`, `env`, `yaml`, `mapstructure`, `toml`, `koanf`, …) the removed code used and nothing reads now: settings deployments still set for nothing.
-- **Generated code no longer used**: e.g. sqlc queries; remove them from their source and regenerate. Methods an interface of the module still requires (mocks) and protobuf messages (`*.pb.go`) are never listed.
-- **Registrations removed / rewired / added**: calls that take one of the module's functions as a value (an HTTP route, an event subscription, a hook, a CLI command), compared between base and head by call and handler. "Rewired" is the same call with another handler; "removed, no replacement" is a call that no longer gets one.
-- **🔐 Sensitive code changed**: every changed function whose body (closures included) calls, takes as a value or builds a composite literal of an API in the sensitive table, or that lies in a `critical` package. Untested ones first, then by name: `- 🔴 \`pkg.F\` — os/exec.Command, database/sql.(*Tx).Exec · 0 % (0/7)`, up to 3 matched APIs then ` +N`; a function marked only by `critical` shows `critical: <glob>`. A sensitive function that is untested (it has added lines and, with a coverprofile, they are `0/N`; without one, no test reaches it) is 🔴 whatever its callers and not softened by tests in other packages; `main`, `init` and wiring functions are exempt from this rule (wiring stays at most 🟡) but still listed; partly tested stays 🟡, and one with no added lines is rated as usual, as is one in a degraded run without a coverprofile (test reach unknown; still listed). A folded group member is listed with its own row.
-- **🏛 Architecture**: new import edges that break the layer rules, conformance and coupling changes (see Architecture).
-- **Table**: every changed function with its risk, kind (`new`, `body`, `signature`; `(branch removed)` when a `case`, `if`/`else` or `return` was removed), callers up to `--depth`, where it is registered as a callback, and the coverage of its added lines (`no added lines · reached by test` / `not reached` when it only lost lines). `· wiring` after the kind (`new · wiring`, `body · wiring`, `signature · wiring`) marks straight-line setup: a function that only constructs and connects values, with no branch other than error exits (`if err != nil { return … }`, `Fatal*`, `Exit`, `panic`) and no computation (arithmetic, comparisons, indexing, loops, switches); a closure it passes on is held to the same rule, so a closure with a loop or arithmetic makes it not wiring, and a function with a `context.Context` parameter runs per request and is never wiring; it is rated at most 🟡 (an exported signature change in an importable package stays 🔴). `· sensitive` follows (after `· wiring` when both apply) for a function listed under 🔐.
-- **Groups**: a new function called only by other new functions, and not 🔴 on its own, is folded into the row of the new function that enters it (kind `new · +N`, `new · +N · sensitive` when that entry function is sensitive); the row's coverage and risk are summed over the whole group (but an entry 🔴 on its own keeps the row 🔴), and ` · K untested` counts the folded functions with no covered added line that no test in another package reaches either. Under the table, `<details>` *X +N new* lists each folded function with its own risk, kind, coverage and file. The diagram shows only the entry. A function 🔴 on its own always keeps its own row.
-- **Diagram**: the changed functions coloured by risk, with a legend; up to 3 callers each (whoever registered it as a callback first, as one dashed "registers via …" edge), the remaining direct callers as one "+N" node. The full list follows under *All callers*.
-- **Deleted functions, changed declarations, touched tests**: inline when short, otherwise counted and collapsed, grouped by package or file.
-
-Callers through a func value (an event bus, a handler table) are narrowed to the code that registered the function; callers of a closure are not counted as callers of the function that created it. An exported signature change is red only in a package other modules can import.
-
-The **Entry points** column shows which entry points reach a changed function through any number of calls, the most specific first: the registration call that passes it as a value (e.g. `GET("/x", …)`), `api <function>` (an exported function of an importable package, or an exported method of an exported type there), `main` and `init`. The first two are shown, then ` +N`; `—` means none. Registrations and `api` functions render as code spans. With two or more rows, an entry point every shown row has (often `main`) is left out of the cells and stated once above the table: `All changes shown are reached from: …`. The column appears only when some shown row has an entry point, and never in a degraded run.
-
-The base revision is exported with `git archive` into a temporary directory and type-checked next to the head; the repository and its worktree are not touched.
-
-## Limits
+<details><summary>⚠️ Limits of this analysis</summary>
 
 - Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
 - Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.
-- Now unused: uses through `reflect`, `//go:linkname`, files excluded by build tags or other repositories are not seen.
-- Cross-package coverage is judged by static reachability: a test in another package whose call graph reaches the function counts, even if at run time it takes another path.
-- Registrations: only calls that take a function directly (not inside a struct literal or a slice) are compared.
+- Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
+</details>
+
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact v0.0.0-20261110082548-59c71b95be3d · 1.0 s</sub>
+
+</details>
+
+## What a reviewer learns
+
+- **What changed, ranked by risk:** every changed function with its kind (`new`, `body`, `signature`, a removed branch, straight-line wiring), rated 🔴/🟡/🟢 by fixed rules.
+- **Who depends on it:** its callers up to `--depth`, where it is registered as a callback, and the entry points that reach it: routes and handlers, exported API, `main` and `init`.
+- **Whether a test covers it:** the coverage of the added lines from your coverprofile, or, without one, whether any test reaches the function in the call graph, across packages.
+- **Untested sensitive code:** changed functions that call process, file, SQL, HTTP, crypto, deserialization or mutating reflection APIs (or sit in a package you mark `critical`) and have no test.
+- **What the change left behind:** code now unused, config fields nothing reads any more, registrations removed or rewired, and new import edges that break the architecture's layer rules.
+
+## Quickstart
+
+**GitHub Actions** (`.github/workflows/mrimpact.yml`):
+
+```yaml
+name: mrimpact
+on: pull_request
+
+jobs:
+  mrimpact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: Kevinbarrero/mr-impact@v0
+        with:
+          run-tests: true   # optional: go test ./... -coverprofile first
+```
+
+Use `pull_request`, never `pull_request_target`: the latter runs the pull request's code with a write token ([why](docs/reference.md#do-not-use-pull_request_target)). On fork pull requests the note goes to the job summary.
+
+**GitLab CI** (`.gitlab-ci.yml`), then add a Project Access Token as the masked variable `MRIMPACT_TOKEN` ([token setup](docs/reference.md#token-setup)):
+
+```yaml
+include:
+  - remote: https://raw.githubusercontent.com/Kevinbarrero/mr-impact/main/ci/mrimpact.gitlab-ci.yml
+```
+
+**Locally:**
+
+```sh
+go install github.com/Kevinbarrero/mr-impact/cmd/mrimpact@latest
+# or a verified release binary:
+curl -sSfL https://raw.githubusercontent.com/Kevinbarrero/mr-impact/main/install.sh | sh -s -- -b ~/.local/bin
+
+mrimpact --base origin/main     # run from the module root; prints the note, posts nothing
+```
+
+Flags, configuration, the action inputs, the GitLab variables and every section of the note are in the [reference](docs/reference.md).
+
+## Examples
+
+Coming with the first release: notes from real pull requests of well-known Go projects.
+
+## How it works
+
+mrimpact diffs the head against the merge base of `--base` with `git`, exports the base revision with `git archive` into a temporary directory, and type-checks both revisions with `go/packages`. It maps the changed lines to functions, builds an SSA call graph (VTA) to find callers, entry points and the tests that reach each function, reads your coverprofiles if you give any, compares the package import graph against layer rules, and applies fixed rules to rate each function. The result is Markdown with a Mermaid diagram, posted as one comment that is updated in place. The same input always gives the same note; nothing leaves the runner except that comment.
+
+## Compared to
+
+mrimpact is a reviewer's map of a change, not a linter, a coverage service or a security scanner. It sits next to these tools:
+
+| Tool | What it does | What mrimpact adds | When you still want it |
+|---|---|---|---|
+| Codecov / diff-cover | Coverage of the changed lines from a coverage report, with project history and gates | Which *functions* changed, their callers and entry points; static test reach when there is no coverprofile, and tests in other packages that reach the code | Coverage trends over time, percentage gates, other languages |
+| golangci-lint + reviewdog | Lint findings (bugs, style, complexity) posted on the changed lines | The change's reach: callers, entry points, removed registrations, code left unused | Always: mrimpact reports no lint issues |
+| `deadcode` | Functions unreachable from `main` in the whole program | Only what *this* change made unused, plus config fields and generated code no longer used, in the review | Whole-program cleanups and audits |
+| arch-go / go-arch-lint | Enforce declared architecture rules from a rule file, failing the build | Zero-config inferred layer hints, presets, only the *new* violations of the diff, coupling (Martin metrics) before and after | A dedicated rule file with more rule kinds, enforced on the whole codebase |
+| govulncheck | Known vulnerabilities (Go vulnerability database) in the code and dependencies, by reachability | Untested changes to sensitive APIs in your own code; it knows no CVEs | Always, for known vulnerabilities |
+| SonarQube | A server-based multi-language platform: quality gates, issues, security hotspots, coverage, duplication | A single offline binary with a Go call graph and entry points, no server and no account | Organisation-wide dashboards and gates across languages |
+| AI reviewers | Comments from a language model on the diff's logic, naming and intent | Deterministic, offline facts: the same input gives the same note, no code is sent anywhere | Reading the code's intent and suggesting changes, which mrimpact does not do |
+
+## Limitations
+
+- **Go only**, and **one module per run**: run it from the module root (`--dir`); callers in other modules or services are not seen.
+- **Reflection and plugins are not followed:** calls through `reflect`, `plugin`, `//go:linkname` or registration by name are not detected.
+- **The Go toolchain is required on the runner**, the version your module needs: the action does not install Go (use `actions/setup-go`), and the GitLab template uses the `golang` image.
+- **Full history:** the base commit must be in the clone (`fetch-depth: 0` / `GIT_DEPTH: 0`).
+
+The full list is under [Limits](docs/reference.md#limits) in the reference.
 
 ## License
 
-TBD (MIT or Apache-2.0)
+[Apache-2.0](LICENSE). Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and, for vulnerabilities, [SECURITY.md](SECURITY.md).
