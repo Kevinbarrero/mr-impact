@@ -3,3 +3,7 @@ dist/
 docs/launch/
 mrimpact-report.md
 .superpowers/
+
+# internal design notes, kept locally only
+docs/superpowers/
+docs/validation/
