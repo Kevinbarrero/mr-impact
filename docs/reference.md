@@ -292,3 +292,6 @@ The base revision is exported with `git archive` into a temporary directory and 
 - Now unused: uses through `reflect`, `//go:linkname`, files excluded by build tags or other repositories are not seen.
 - Cross-package coverage is judged by static reachability: a test in another package whose call graph reaches the function counts, even if at run time it takes another path.
 - Registrations: only calls that take a function directly (not inside a struct literal or a slice) are compared.
+- Registrations are compared by the whole call: a call that keeps its handlers but gets other arguments (a constructor given one more parameter) is listed as removed and added.
+- Signatures are compared as written: replacing a type by an alias of it (`type Completion = string`) reads as a signature change, red when exported.
+- A function dispatched through a framework registry filled in `init` (e.g. Caddyfile directives) can read *not reached* although tests run it: the call graph narrows the registry's callers to the `init` that registered it. A coverprofile made with `-coverpkg=./...` shows its real coverage.
