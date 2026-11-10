@@ -104,3 +104,79 @@ func TestIsWiring_ContextParam(t *testing.T) {
 		})
 	}
 }
+
+// make and new take a type argument, which expr must accept as plumbing: a
+// constructor that only builds its struct is wiring.
+func TestWiring_ConstructorMakeNew(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"make-new-builds", "return &svc{m: make(map[string]int), s: make([]int, 0, n), c: make(chan int), mu: new(sync.Mutex), f: fn}", true},
+		{"make-slice-len", "return &S{xs: make([]int, n)}", true},
+		{"make-nested-map", "return &S{m: make(map[string][]chan<- int)}", true},
+		{"make-func-type", "return &S{f: make(chan func(int) error)}", true},
+		{"make-arith-arg", "return &S{xs: make([]int, n+1)}", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isWiring(parseWiringFunc(t, c.body), nil); got != c.want {
+				t.Errorf("isWiring = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A generic type instantiation as a make/new type argument is a type too.
+// s[i] stays a value index and is not wiring.
+func TestWiring_GenericMake(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"make-index-list", "return &S{m: make(Map[K, V])}", true},
+		{"make-index", "return &S{b: new(Box[int])}", true},
+		{"make-nested-instantiation", "return &S{m: make(map[string]Box[int])}", true},
+		{"make-pointer-instantiation", "return &S{m: make(map[string]*Box[K, V])}", true},
+		{"index-value", "return s[i]", false},
+		{"index-value-in-make", "return &S{m: make(map[string]int, s[i])}", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isWiring(parseWiringFunc(t, c.body), nil); got != c.want {
+				t.Errorf("isWiring = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// Building a map inside a constructor is wiring, but logic around it is not.
+func TestWiring_ConstructorWithIfLogic(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"if-cond", "m := make(map[string]int); if n > 0 { m[\"a\"] = 1 }; return &S{m: m}"},
+		{"range-fill", "m := make(map[string]int); for k := range ks { m[k] = 1 }; return &S{m: m}"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isWiring(parseWiringFunc(t, c.body), nil); got {
+				t.Errorf("isWiring = true, want false")
+			}
+		})
+	}
+}
+
+// parseWiringFunc parses body as the body of func f() and returns it.
+func parseWiringFunc(t *testing.T, body string) *ast.FuncDecl {
+	t.Helper()
+	src := "package p\nfunc f() {\n" + body + "\n}\n"
+	f, err := parser.ParseFile(token.NewFileSet(), "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f.Decls[0].(*ast.FuncDecl)
+}

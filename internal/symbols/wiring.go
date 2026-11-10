@@ -88,6 +88,10 @@ func (w *wiringCheck) expr(e ast.Expr) bool {
 				return false
 			}
 		}
+		// make and new take a type as their first argument.
+		if id, ok := e.Fun.(*ast.Ident); ok && (id.Name == "make" || id.Name == "new") && len(e.Args) > 0 {
+			return w.typ(e.Args[0]) && w.exprs(e.Args[1:])
+		}
 		return w.exprs(e.Args)
 	case *ast.CompositeLit:
 		w.built = true
@@ -103,8 +107,46 @@ func (w *wiringCheck) expr(e ast.Expr) bool {
 			}
 		}
 		return true
+	case *ast.ArrayType, *ast.MapType, *ast.ChanType, *ast.FuncType, *ast.InterfaceType, *ast.StructType, *ast.Ellipsis:
+		// Type expressions only appear here as make/new type arguments.
+		return w.typ(e)
 	}
 	return false
+}
+
+// typ accepts a type expression. A generic instantiation (IndexExpr,
+// IndexListExpr) is accepted only here, where it is a type: in a value
+// position s[i] is an index, which expr rejects. Other parts go to expr.
+func (w *wiringCheck) typ(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.ArrayType:
+		return (e.Len == nil || w.expr(e.Len)) && w.typ(e.Elt)
+	case *ast.MapType:
+		return w.typ(e.Key) && w.typ(e.Value)
+	case *ast.ChanType:
+		return w.typ(e.Value)
+	case *ast.Ellipsis:
+		return e.Elt == nil || w.typ(e.Elt)
+	case *ast.FuncType, *ast.InterfaceType, *ast.StructType:
+		return true
+	case *ast.StarExpr:
+		return w.typ(e.X)
+	case *ast.ParenExpr:
+		return w.typ(e.X)
+	case *ast.IndexExpr:
+		return w.typ(e.X) && w.typ(e.Index)
+	case *ast.IndexListExpr:
+		if !w.typ(e.X) {
+			return false
+		}
+		for _, ix := range e.Indices {
+			if !w.typ(ix) {
+				return false
+			}
+		}
+		return true
+	}
+	return w.expr(e)
 }
 
 func (w *wiringCheck) stmt(s ast.Stmt) bool {
