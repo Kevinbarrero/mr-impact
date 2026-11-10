@@ -29,7 +29,7 @@
 
 🏛 **Architecture (inferred — hints, not enforced)** · conformance 100.0 % → 100.0 % · 2/5 packages classified · layers: `cmd/app` → entry
 
-<details><summary>Coupling (1 packages changed)</summary>
+<details><summary>Coupling (1 package changed)</summary>
 
 | Package | Ca | Ce | I | A | D |
 |---|---|---|---|---|---|

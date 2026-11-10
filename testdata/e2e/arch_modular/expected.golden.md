@@ -6,7 +6,7 @@
 
 - ❌ new: `billing → orders` — `internal/billing/x/x.go:5` imports `internal/orders/store`
 
-<details><summary>Coupling (1 packages changed)</summary>
+<details><summary>Coupling (1 package changed)</summary>
 
 | Package | Ca | Ce | I | A | D |
 |---|---|---|---|---|---|

@@ -4,9 +4,9 @@
 
 🏛 **Architecture** (hexagonal) · conformance 75.0 % → 60.0 % · 5/5 packages classified
 
-- ❌ new: `adapters → adapters` (isolated) — `internal/adapters/http/h.go:4` imports `internal/adapters/pg` (+1 violations already in base)
+- ❌ new: `adapters → adapters` (isolated) — `internal/adapters/http/h.go:4` imports `internal/adapters/pg` (+1 violation already in base)
 
-<details><summary>Coupling (1 packages changed)</summary>
+<details><summary>Coupling (1 package changed)</summary>
 
 | Package | Ca | Ce | I | A | D |
 |---|---|---|---|---|---|

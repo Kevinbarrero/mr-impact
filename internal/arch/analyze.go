@@ -9,6 +9,7 @@ import (
 type MetricDelta struct {
 	Pkg        string
 	Base, Head Metric
+	New        bool // absent at base: Base is zero and means nothing
 }
 
 // PkgLayer is a touched package and its layer.
@@ -24,7 +25,8 @@ type Result struct {
 	New                []Violation
 	Existing           int
 	BaseMissing        bool
-	Coupling           []MetricDelta
+	Coupling           []MetricDelta // capped at 10
+	CouplingTotal      int           // changed touched packages before the cap
 	TouchedLayers      []PkgLayer
 }
 
@@ -90,11 +92,11 @@ func Analyze(m Model, base *Graph, head Graph, touched []string) Result {
 		if n := len(r.Coupling); n > 0 && r.Coupling[n-1].Pkg == p {
 			continue
 		}
-		b := bm[p] // zero Metric when absent at base
-		if b.Ca == h.Ca && b.Ce == h.Ce && round(b.A) == round(h.A) && round(b.D) == round(h.D) {
+		b, existed := bm[p] // a package new at head is always listed
+		if existed && b.Ca == h.Ca && b.Ce == h.Ce && round(b.A) == round(h.A) && round(b.D) == round(h.D) {
 			continue
 		}
-		r.Coupling = append(r.Coupling, MetricDelta{Pkg: p, Base: b, Head: h})
+		r.Coupling = append(r.Coupling, MetricDelta{Pkg: p, Base: b, Head: h, New: !existed})
 	}
 	sort.SliceStable(r.Coupling, func(i, j int) bool {
 		a, b := r.Coupling[i], r.Coupling[j]
@@ -104,6 +106,7 @@ func Analyze(m Model, base *Graph, head Graph, touched []string) Result {
 		}
 		return a.Pkg < b.Pkg
 	})
+	r.CouplingTotal = len(r.Coupling)
 	if len(r.Coupling) > maxListed {
 		r.Coupling = r.Coupling[:maxListed]
 	}

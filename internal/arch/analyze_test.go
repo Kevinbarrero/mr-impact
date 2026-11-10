@@ -88,6 +88,15 @@ func TestAnalyze_CouplingOnlyChangedTouched(t *testing.T) {
 	if got["m/domain/a"] || !got["m/domain/b"] || !got["m/domain/c"] || len(r.Coupling) != 2 {
 		t.Fatalf("%+v", r.Coupling)
 	}
+	// c is absent at base: marked new, base left zero; b existed.
+	for _, c := range r.Coupling {
+		if c.New != (c.Pkg == "m/domain/c") || (c.New && c.Base != (Metric{})) {
+			t.Errorf("New flag: %+v", c)
+		}
+	}
+	if r.CouplingTotal != 2 {
+		t.Errorf("CouplingTotal = %d, want 2", r.CouplingTotal)
+	}
 	// untouched changed package is not listed.
 	r = Analyze(layerModel(), &base, head, []string{"m/domain/a"})
 	if len(r.Coupling) != 0 {
@@ -117,8 +126,8 @@ func TestAnalyze_CouplingSortAndCap(t *testing.T) {
 		}
 	}
 	r := Analyze(layerModel(), &base, head, touched)
-	if len(r.Coupling) != 10 {
-		t.Fatalf("cap: %d", len(r.Coupling))
+	if len(r.Coupling) != 10 || r.CouplingTotal != 12 {
+		t.Fatalf("cap: %d of %d, want 10 of 12", len(r.Coupling), r.CouplingTotal)
 	}
 	abs := func(x float64) float64 {
 		if x < 0 {

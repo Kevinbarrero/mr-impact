@@ -605,20 +605,32 @@ func loadBase(ctx context.Context, cfg Config, baseSHA string, deletedLines map[
 	return baseResult{regs: registrations.Find(pkgs, mod, rel), uses: deletedUses(pkgs, rel, deletedLines), graph: &g}
 }
 
-// touchedPkgs returns the import paths of the head packages holding an added
-// or modified non-test .go file of the MR (sorted, unique).
+// touchedPkgs returns the import paths of the head packages a non-test .go
+// change of the MR touches (sorted, unique): those holding an added, modified
+// or renamed file at head, and, for a deleted file or a rename's old path, the
+// head package whose non-test files live in that file's directory, if any.
 func touchedPkgs(prog *load.Program, changes []diff.FileChange) []string {
-	changed := map[string]bool{}
+	files, dirs := map[string]bool{}, map[string]bool{}
 	for _, c := range changes {
-		if c.Path != "" && !c.IsTest && c.Status != diff.Deleted {
-			changed[c.Path] = true
+		if c.IsTest {
+			continue
+		}
+		if c.Path != "" {
+			files[c.Path] = true
+		}
+		if c.OldPath != "" && (c.Status == diff.Deleted || c.Status == diff.Renamed) {
+			dirs[path.Dir(c.OldPath)] = true
 		}
 	}
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range prog.Packages {
 		for _, f := range append(slices.Clone(p.GoFiles), p.CompiledGoFiles...) {
-			if r, ok := prog.Rel(f); ok && changed[r] && !seen[p.PkgPath] {
+			r, ok := prog.Rel(f)
+			if !ok || seen[p.PkgPath] || strings.HasSuffix(r, "_test.go") {
+				continue
+			}
+			if files[r] || dirs[path.Dir(r)] {
 				seen[p.PkgPath] = true
 				out = append(out, p.PkgPath)
 			}
