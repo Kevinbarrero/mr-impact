@@ -1,0 +1,71 @@
+name: False positive / false negative
+description: The note says something untrue, or misses something true.
+labels: [false-positive]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A minimal piece of Go code that reproduces the wrong note is the fastest way to a fix.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `mrimpact --version`.
+      placeholder: mrimpact v0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - False positive (the note reports something that is not true)
+        - False negative (the note misses something that is true)
+    validations:
+      required: true
+  - type: dropdown
+    id: section
+    attributes:
+      label: Section of the note
+      options:
+        - Risk rating or table row
+        - Callers or Entry points
+        - Coverage
+        - Sensitive code
+        - Architecture
+        - Now unused / config no longer read / generated code
+        - Registrations
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: note-said
+    attributes:
+      label: What the note said
+      description: The exact lines of the note.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: truth
+    attributes:
+      label: What is true
+      description: What the note should have said, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code
+      description: The changed code and the code that shows the truth (a caller, a test, a registration), as small as you can make it. Or a link to a public repository and the base..head range.
+      render: go
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: The exact command, including `--coverprofile` and config if any.
+      render: shell
+    validations:
+      required: false
