@@ -3,8 +3,8 @@ package pipeline
 import (
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
-	"gitlab.com/wh1t3hat/mrimpact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
+	"github.com/Kevinbarrero/mr-impact/internal/load"
 )
 
 func TestEntryRoot(t *testing.T) {

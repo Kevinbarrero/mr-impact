@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
+	"github.com/Kevinbarrero/mr-impact/internal/testutil"
 )
 
 func TestExportWritesBaseTree(t *testing.T) {

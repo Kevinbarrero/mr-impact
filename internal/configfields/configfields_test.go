@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/load"
 )
 
 func TestUnused(t *testing.T) {

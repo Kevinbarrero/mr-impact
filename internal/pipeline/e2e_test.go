@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
-	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
-	"gitlab.com/wh1t3hat/mrimpact/internal/report"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
-	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
-	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
+	"github.com/Kevinbarrero/mr-impact/internal/arch"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/diff"
+	"github.com/Kevinbarrero/mr-impact/internal/report"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/sensitive"
+	"github.com/Kevinbarrero/mr-impact/internal/testutil"
 )
 
 var update = flag.Bool("update", false, "rewrite expected.golden.md files")
@@ -74,7 +74,7 @@ func TestE2E(t *testing.T) {
 				t.Fatal(err)
 			}
 			m, err := Run(context.Background(), Config{
-				Dir: repo, Base: baseSHA, Head: "HEAD", Depth: 2,
+				Dir: repo, Base: baseSHA, Head: "HEAD", Depth: 2, Version: "test",
 				CoverProfiles: tc.profiles, Timeout: 5 * time.Minute,
 				Now:       func() time.Time { return now },
 				Sensitive: &table, Critical: fc.Critical,
@@ -293,11 +293,11 @@ func TestRun_DegradedGraphNoGroups(t *testing.T) {
 func TestShallowBaseIsInternalFailure(t *testing.T) {
 	dir := filepath.Join("..", "..", "testdata", "e2e", "interface_call")
 	repo, _, _ := testutil.MakeRepo(t, filepath.Join(dir, "base"), filepath.Join(dir, "head"))
-	m, err := Run(context.Background(), Config{Dir: repo, Base: "1111111111111111111111111111111111111111"})
+	m, err := Run(context.Background(), Config{Dir: repo, Base: "1111111111111111111111111111111111111111", Version: "v1.2.3"})
 	if !errors.Is(err, diff.ErrShallow) {
 		t.Fatalf("err = %v, want ErrShallow", err)
 	}
-	if m.Failure != diff.ErrShallow.Error() || m.Version != Version {
+	if m.Failure != diff.ErrShallow.Error() || m.Version != "v1.2.3" {
 		t.Errorf("Failure=%q Version=%q, want ErrShallow's text and the version", m.Failure, m.Version)
 	}
 }
@@ -430,7 +430,7 @@ func TestShallowFetchErrorDoesNotLeakIntoNote(t *testing.T) {
 	if out, err := exec.Command("git", "-C", repo, "remote", "add", "origin", filepath.Join(t.TempDir(), "user:secret@host")).CombinedOutput(); err != nil {
 		t.Fatalf("git remote add: %v\n%s", err, out)
 	}
-	m, err := Run(context.Background(), Config{Dir: repo, Base: "1111111111111111111111111111111111111111"})
+	m, err := Run(context.Background(), Config{Dir: repo, Base: "1111111111111111111111111111111111111111", Version: "v1.2.3"})
 	if !errors.Is(err, diff.ErrShallow) {
 		t.Fatalf("err = %v, want ErrShallow", err)
 	}

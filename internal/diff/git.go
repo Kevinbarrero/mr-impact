@@ -14,7 +14,7 @@ import (
 
 // ErrShallow is returned when the base commit is not available locally and
 // cannot be fetched.
-var ErrShallow = errors.New(`base commit not in clone: set GIT_DEPTH: 0 in the job`)
+var ErrShallow = errors.New(`base commit not in clone: fetch full history (GitLab: GIT_DEPTH: 0; GitHub: actions/checkout with fetch-depth: 0)`)
 
 var generatedRe = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
 

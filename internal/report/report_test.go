@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
-	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
-	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/arch"
+	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/registrations"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -71,7 +71,7 @@ func specModel() Model {
 		TestsTouched: []string{"orders/validate_test.go"},
 		Coverage:     "coverprofile",
 		BaseSHA:      "a1b2c3d4e5f6",
-		Version:      "0.1.0",
+		Version:      "v0.1.0",
 		Duration:     3200 * time.Millisecond,
 	}
 }
@@ -103,11 +103,11 @@ func TestRenderSpecExample(t *testing.T) {
 }
 
 func TestRenderFailure(t *testing.T) {
-	golden(t, "failure", Render(Model{Failure: "load error: boom", Version: "0.1.0", Duration: 1500 * time.Millisecond}))
+	golden(t, "failure", Render(Model{Failure: "load error: boom", Version: "v0.1.0", Duration: 1500 * time.Millisecond}))
 }
 
 func TestRenderNoGoChanges(t *testing.T) {
-	golden(t, "no_go_changes", Render(Model{NoGoChanges: true, Version: "0.1.0", Duration: 100 * time.Millisecond}))
+	golden(t, "no_go_changes", Render(Model{NoGoChanges: true, Version: "v0.1.0", Duration: 100 * time.Millisecond}))
 }
 
 func TestRenderNoFuncs(t *testing.T) {
@@ -115,7 +115,7 @@ func TestRenderNoFuncs(t *testing.T) {
 		Deleted:      []DeletedFunc{{Display: "legacy.OldTotal", File: "legacy/legacy.go"}},
 		Decls:        []Decl{{What: "const Max", File: "limits/limits.go"}},
 		TestsTouched: []string{"limits/limits_test.go"},
-		Coverage:     "static", BaseSHA: "abcdef0123", Version: "0.1.0", Duration: time.Second,
+		Coverage:     "static", BaseSHA: "abcdef0123", Version: "v0.1.0", Duration: time.Second,
 	})
 	for _, absent := range []string{"| Risk |", "```mermaid", "All callers"} {
 		if strings.Contains(out, absent) {
@@ -141,7 +141,7 @@ func TestRenderDegradedWithLimits(t *testing.T) {
 func TestRenderDiagramCap(t *testing.T) {
 	m := Model{
 		Funcs:    []FuncRow{{Level: risk.Red, Display: "a.Target", Kind: "body", Callers: callers("c", "a.Target", 30), CoverText: "n/a"}},
-		Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+		Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 	}
 	out := Render(m)
 	block := out[strings.Index(out, "```mermaid"):]
@@ -160,7 +160,7 @@ func TestRenderDiagramCap(t *testing.T) {
 }
 
 func TestRenderTableCap(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	for i := 0; i < 60; i++ {
 		m.Funcs = append(m.Funcs, FuncRow{Level: risk.Green, Display: fmt.Sprintf("p.F%02d", i), Kind: "body", CoverText: "n/a"})
 	}
@@ -181,7 +181,7 @@ func TestMermaidEscaping(t *testing.T) {
 				{Display: `x.say("hi")`, Pkg: "ex.com/x", Depth: 1, Via: `list.(*List[T]).Push`},
 			}},
 		},
-		Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0",
+		Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0",
 	}
 	out := Render(m)
 	if !strings.Contains(out, `n0["🔴 list.(*List[T]).Push"]:::red`) {
@@ -207,7 +207,7 @@ func TestRegistrantEdge(t *testing.T) {
 			{Display: "b.One", Pkg: "b", Depth: 1, Via: "a.T"},
 			{Display: "c.Two", Pkg: "c", Depth: 2, Via: "b.One"},
 		}}},
-		Coverage: "static", Version: "0.1.0",
+		Coverage: "static", Version: "v0.1.0",
 	}
 	out := Render(m)
 	for _, want := range []string{`n1["a.New"]`, `n1 -. "registers via Subscribe" .-> n0`, `n2["b.One"]`, "n2 --> n0"} {
@@ -229,7 +229,7 @@ func TestCallerDedupKeepsPackages(t *testing.T) {
 			{Display: "main.run", Pkg: "ex.com/cmd/worker", Depth: 1, Via: "a.T"},
 			{Display: "main.run", Pkg: "ex.com/cmd/worker", Depth: 2, Via: "a.T"},
 		}}},
-		Coverage: "static", Version: "0.1.0",
+		Coverage: "static", Version: "v0.1.0",
 	}
 	out := Render(m)
 	if !strings.Contains(out, "| 🔴 | `a.T` | body | 2 (2 pkgs) | n/a |") {
@@ -245,7 +245,7 @@ func TestCallerDedupKeepsPackages(t *testing.T) {
 
 // A large removal is counted and collapsed, grouped by package directory.
 func TestRenderLargeDeletionCollapsed(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 		DeletedFiles: []string{"a/x.go", "b/y.go"}}
 	for i := 0; i < 4; i++ {
 		m.Deleted = append(m.Deleted, DeletedFunc{Display: fmt.Sprintf("a.F%d", i), File: "a/x.go"})
@@ -270,7 +270,7 @@ func TestRenderLargeDeletionCollapsed(t *testing.T) {
 }
 
 func TestRenderUnusedAndRegistered(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 		Unused: []callgraph.Unused{
 			{Display: "x.lost", File: "x/x.go", Line: 3},
 			{Display: "x.helper", File: "x/x.go", Line: 9, TestOnly: true},
@@ -297,7 +297,7 @@ func TestRenderUnusedAndRegistered(t *testing.T) {
 }
 
 func TestRender_Groups(t *testing.T) {
-	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+	m := Model{Coverage: "coverprofile", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 		Folded: 2, Groups: 1,
 		Funcs: []FuncRow{
 			{Level: risk.Yellow, Display: "svc.New", Kind: "new · +2", File: "svc/svc.go",
@@ -394,7 +394,7 @@ func TestRender_SensitiveSection(t *testing.T) {
 }
 
 func TestRender_EntryPointsColumn(t *testing.T) {
-	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	with := base
 	with.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
@@ -424,7 +424,7 @@ func TestRender_EntryPointsColumn(t *testing.T) {
 // main is dropped from the cells when every shown row is reached from main:
 // it says nothing there. A cell left empty renders a dash.
 func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	m.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
 			{Kind: "api", Display: "x.Do"}, {Kind: "main", Display: "main.main"}, {Kind: "init", Display: "x.init"}}},
@@ -455,7 +455,7 @@ func TestRender_EntryPointsDropsCommonMain(t *testing.T) {
 // stated once above the table.
 func TestRender_EntryPointsCommonRegistration(t *testing.T) {
 	run := callgraph.Entry{Kind: "registered", Display: "RunContext(…)"}
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	m.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
 			run, {Kind: "registered", Display: `Sub("a", …)`}}},
@@ -480,7 +480,7 @@ func TestRender_EntryPointsCommonRegistration(t *testing.T) {
 func TestRender_EntryPointsCommonMainAndRegistration(t *testing.T) {
 	run := callgraph.Entry{Kind: "registered", Display: "RunContext(…)"}
 	main := callgraph.Entry{Kind: "main", Display: "main.main"}
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	m.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
 			run, {Kind: "api", Display: "x.Do"}, main}},
@@ -500,7 +500,7 @@ func TestRender_EntryPointsCommonMainAndRegistration(t *testing.T) {
 
 // (c) With a single row nothing is common: the table is unchanged.
 func TestRender_EntryPointsSingleRowUnchanged(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	m.Funcs = []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
 		{Kind: "registered", Display: "RunContext(…)"}, {Kind: "main", Display: "main.main"}}}}
 	out := Render(m)
@@ -510,7 +510,7 @@ func TestRender_EntryPointsSingleRowUnchanged(t *testing.T) {
 }
 
 func TestRender_ConfigLine(t *testing.T) {
-	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a"}}}
 	cases := []struct {
 		name string
@@ -553,7 +553,7 @@ func TestRender_ConfigLine(t *testing.T) {
 // Registered and api entries render as code spans: *, _ and < stay literal;
 // a backtick takes a double-backtick span; | is still escaped.
 func TestRender_EntryCodeSpans(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
 	m.Funcs = []FuncRow{
 		{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a", Entries: []callgraph.Entry{
 			{Kind: "registered", Display: "Handle(`a|b`, …)"}, {Kind: "api", Display: "x.(*T).M"}}},
@@ -768,12 +768,19 @@ func TestRender_ArchConformanceRenderedEqualIsNoChange(t *testing.T) {
 }
 
 func TestRender_ConfigLineArchitecture(t *testing.T) {
-	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "0.1.0", Duration: time.Second,
+	m := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
 		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a"}},
 		Config: &ConfigNote{File: ".mrimpact.yml", Critical: []string{"a/..."}, Architecture: "hexagonal", Changed: true,
 			Changes: []config.Change{{What: "adds architecture", Items: []string{"hexagonal"}}}}}
 	want := "⚙️ .mrimpact.yml: critical `a/...` · architecture hexagonal — changed in this MR (MR adds architecture: `hexagonal`)"
 	if got := Render(m); !strings.Contains(got, want+"\n") {
 		t.Errorf("missing %q in:\n%s", want, got)
+	}
+}
+
+func TestFooterVersion(t *testing.T) {
+	out := Render(Model{Coverage: "static", Version: "v9.9.9", Duration: time.Second})
+	if !strings.Contains(out, " · mrimpact v9.9.9 · 1.0 s</sub>") {
+		t.Errorf("footer does not carry the version verbatim:\n%s", out)
 	}
 }

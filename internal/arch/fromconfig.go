@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
 )
 
 // FromConfig builds the model of an architecture block: Inferred() when the

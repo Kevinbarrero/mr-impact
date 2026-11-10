@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
+	"github.com/Kevinbarrero/mr-impact/internal/testutil"
 )
 
 func writeTree(t *testing.T, files map[string]string) string {

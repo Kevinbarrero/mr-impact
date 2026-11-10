@@ -1,4 +1,4 @@
-module gitlab.com/wh1t3hat/mrimpact
+module github.com/Kevinbarrero/mr-impact
 
 go 1.26.0
 
