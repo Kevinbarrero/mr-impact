@@ -928,3 +928,51 @@ func TestRender_UncoveredStaticModeNone(t *testing.T) {
 		t.Errorf("static mode must not list:\n%s", out)
 	}
 }
+
+func TestRender_UncoveredGroupMembers(t *testing.T) {
+	group := FuncRow{
+		Level: risk.Yellow, Display: "p.Entry", Kind: "new · +2", CoverText: "60 % (6/10)", File: "p/e.go", Uncovered: []int{4},
+		Members: []FuncRow{
+			{Level: risk.Yellow, Display: "p.memberA", Kind: "new", CoverText: "50 % (2/4)", File: "p/a.go", Uncovered: []int{7, 8}},
+			{Level: risk.Green, Display: "p.memberB", Kind: "new", CoverText: "100 % (2/2)", File: "p/b.go"},
+		},
+	}
+	// A fully covered entry: its members still list their lines in its place.
+	covered := FuncRow{
+		Level: risk.Yellow, Display: "p.Covered", Kind: "new · +1", CoverText: "80 % (4/5)", File: "p/c.go",
+		Members: []FuncRow{{Level: risk.Yellow, Display: "p.memberC", Kind: "new", CoverText: "0 % (0/1)", File: "p/d.go", Uncovered: []int{9}}},
+	}
+	out := Render(uncoveredModel(group, covered))
+	// Table order: p.Covered sorts before p.Entry.
+	want := "<details><summary>Uncovered added lines (3 functions)</summary>\n\n" +
+		"- `p.memberC` — `p/d.go:9`\n" +
+		"- `p.Entry` — `p/e.go:4`\n" +
+		"- `p.memberA` — `p/a.go:7-8`\n" +
+		"</details>\n\n"
+	if !strings.Contains(out, want) {
+		t.Fatalf("missing %q in\n%s", want, out)
+	}
+}
+
+func TestRender_UncoveredMembersCountTowardCap(t *testing.T) {
+	var members []FuncRow
+	for i := 0; i < 16; i++ {
+		members = append(members, FuncRow{Level: risk.Red, Display: fmt.Sprintf("p.m%02d", i), Kind: "new", File: "p/m.go", Uncovered: []int{i + 1}})
+	}
+	out := Render(uncoveredModel(FuncRow{Level: risk.Red, Display: "p.E", Kind: "new · +16", CoverText: "0 % (0/16)", File: "p/e.go", Members: members}))
+	if !strings.Contains(out, "(16 functions)") || !strings.Contains(out, "\n- … and 1 more\n") {
+		t.Errorf("members must count toward N and the cap:\n%s", out)
+	}
+}
+
+func TestRender_RegistrationsChangedLongAttrShortened(t *testing.T) {
+	long := "mw.New(" + strings.Repeat("x", 120) + ")"
+	r := registrations.Registration{Callee: "GET", Route: "GET /x", Handler: "h.H", File: "h/h.go", Line: 1}
+	out := Render(Model{Coverage: "static", BaseSHA: "abcdef0", RegChanged: []registrations.Changed{{From: r, To: r, Added: []string{long}}}})
+	if strings.Contains(out, long) {
+		t.Fatalf("attribute not shortened:\n%s", out)
+	}
+	if want := "+ `" + registrations.Shorten(long) + "`"; !strings.Contains(out, want) || len([]rune(registrations.Shorten(long))) != 90 {
+		t.Errorf("missing %q in\n%s", want, out)
+	}
+}

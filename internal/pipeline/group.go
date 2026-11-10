@@ -158,6 +158,11 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		crossPkgs = nil
 	} else {
 		crossPkgs = sortedUnique(crossPkgs)
+		// "reached by tests in …" on the row: list no uncovered lines.
+		row.Uncovered = nil
+		for i := range row.Members {
+			row.Members[i].Uncovered = nil
+		}
 	}
 	row.Level = risk.Assess(in)
 	if entry.Row.Level == risk.Red {

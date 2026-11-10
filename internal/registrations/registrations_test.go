@@ -68,7 +68,7 @@ func TestPair(t *testing.T) {
 // reg builds a registration with the identity and attributes Find would give.
 func reg(callee string, lits []string, handler string, attrs ...string) Registration {
 	r := Registration{Callee: callee, Handler: handler, Call: callee + "(…)"}
-	r.identity = identityOf(callee, lits, handler)
+	r.identity = identityOf(callee, "", lits, handler)
 	r.attrs = attrs
 	r.key = r.identity + "\x00" + strings.Join(attrs, "\x00")
 	r.slot = callee + strings.Join(lits, "") + strings.Join(attrs, "")
@@ -254,5 +254,17 @@ func TestFind_PackageLevelFuncLitIsItsOwnScope(t *testing.T) {
 	}
 	if g := strings.Join(got, ","); g != "GET /a/q,GET /b/q" {
 		t.Errorf("routes = %q, want GET /a/q,GET /b/q", g)
+	}
+}
+
+func TestCompare_RouteMovedNotPaired(t *testing.T) {
+	// admin.GET("/x", auth, h) -> public.GET("/x", h): the same literal under
+	// another prefix is another route, not a middleware change.
+	_, changed, gone, fresh := Compare(find(t, "testdata/moved/base"), find(t, "testdata/moved/head"))
+	if len(changed) != 0 {
+		t.Errorf("changed = %+v, want none", changed)
+	}
+	if len(gone) != 1 || gone[0].Route != "GET /admin/x" || len(fresh) != 1 || fresh[0].Route != "GET /public/x" {
+		t.Errorf("gone=%+v fresh=%+v", gone, fresh)
 	}
 }

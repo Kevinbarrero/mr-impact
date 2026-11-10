@@ -336,12 +336,22 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 }
 
 // writeUncovered lists, per red or yellow row in table order, the added lines
-// no test covers. funcs are the rows the table shows.
+// no test covers: the row's function, then each member folded into it that
+// has any (a group row sums its members' lines). funcs are the rows the
+// table shows.
 func writeUncovered(b *strings.Builder, funcs []FuncRow) {
 	var rows []FuncRow
 	for _, f := range funcs {
-		if f.Level != risk.Green && len(f.Uncovered) > 0 {
+		if f.Level == risk.Green {
+			continue
+		}
+		if len(f.Uncovered) > 0 {
 			rows = append(rows, f)
+		}
+		for _, mr := range f.Members {
+			if len(mr.Uncovered) > 0 {
+				rows = append(rows, mr)
+			}
 		}
 	}
 	if len(rows) == 0 {
@@ -772,10 +782,10 @@ func writeChanged(b *strings.Builder, cs []registrations.Changed) {
 		}
 		var attrs []string
 		for _, a := range c.Added {
-			attrs = append(attrs, "+ `"+strings.ReplaceAll(a, "`", "'")+"`")
+			attrs = append(attrs, "+ `"+strings.ReplaceAll(registrations.Shorten(a), "`", "'")+"`")
 		}
 		for _, a := range c.Removed {
-			attrs = append(attrs, "− `"+strings.ReplaceAll(a, "`", "'")+"`")
+			attrs = append(attrs, "− `"+strings.ReplaceAll(registrations.Shorten(a), "`", "'")+"`")
 		}
 		fmt.Fprintf(b, "- `%s` → `%s`: %s — `%s:%d`\n", regText(c.To), c.To.Handler, strings.Join(attrs, ", "), c.To.File, c.To.Line)
 	}

@@ -307,3 +307,21 @@ func TestGroup_SensitiveEntryKeepsKind(t *testing.T) {
 		t.Fatalf("rows = %+v", rows)
 	}
 }
+
+func TestGroup_CrossPkgReachedListsNoUncovered(t *testing.T) {
+	// The group row reads "reached by tests in q": its lines may be covered
+	// by those tests, so neither the entry's nor a member's are listed.
+	a := rf("p.A", 0, 3, "p.Old")
+	a.In.Wiring = true
+	a.Row.Uncovered = []int{1, 2, 3}
+	a = reassess(a)
+	h := rf("p.h", 0, 2, "p.A")
+	h.In.CrossPkgTestReached = true
+	h.CrossPkgs = []string{"m/q"}
+	h.Row.Uncovered = []int{7, 8}
+	h = reassess(h)
+	rows, _, _ := group([]ratedFunc{a, h}, "m")
+	if rows[0].Uncovered != nil || rows[0].Members[0].Uncovered != nil {
+		t.Errorf("uncovered = %v, members %v; want none", rows[0].Uncovered, rows[0].Members[0].Uncovered)
+	}
+}

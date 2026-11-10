@@ -6,9 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- **Routes:** registration calls render as the route they register (`GET /trade/:id`), with `Group`/`Route`/`PathPrefix`/`Prefix` prefixes followed through locals of the same function, in the Entry points column and every registration block; anything ambiguous keeps the call text.
-- **Registrations changed:** a registration that keeps its call and handler but gains or loses other arguments (a middleware, an option) is listed once under `🔌 **Registrations changed**` as `+ a, − b`, instead of as removed plus added.
-- **Uncovered added lines:** in coverprofile mode, a collapsed list under the table gives the uncovered added line ranges of each 🔴 and 🟡 row.
+- **Routes:** registration calls render as the route they register (`GET /trade/:id`), with `Group`/`Route`/`PathPrefix`/`Prefix` prefixes followed through locals of the same function, in the Entry points column and every registration block; only path literals (`/x`, `"GET /x"`, `""` under a `/` prefix) render, and anything ambiguous keeps the call text.
+- **Registrations changed:** a registration that keeps its call and handler but gains or loses other arguments (a middleware, an option) is listed once under `🔌 **Registrations changed**` as `+ a, − b`, instead of as removed plus added. A route moved to another group prefix stays removed plus added.
+- **Uncovered added lines:** in coverprofile mode, a collapsed list under the table gives the uncovered added line ranges of each 🔴 and 🟡 row and of the functions folded into it; rows reached only by tests in other packages are not listed.
 
 ### Fixed
 

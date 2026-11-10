@@ -28,8 +28,9 @@ var pathOnly = map[string]bool{"handle": true, "handlefunc": true, "match": true
 var prefixMethods = map[string]bool{"Group": true, "Route": true, "PathPrefix": true, "Prefix": true}
 
 // Render returns the route form of call ("POST /trade", "/x", "GET /x") when
-// its callee is a verb and its first argument a string literal, with
-// prefixes resolved inside enclosing (an *ast.FuncDecl or *ast.FuncLit).
+// its callee is a verb and its first argument a path literal (one starting
+// with "/", a method pattern "GET /x", or "" under a resolved "/" prefix),
+// with prefixes resolved inside enclosing (an *ast.FuncDecl or *ast.FuncLit).
 // gin's Handle("GET", "/x", h) renders as "GET /x". ok is false when it is
 // not a route or a prefix cannot be resolved without guessing; callers then
 // use their call text. Render does not judge whether a verb-named call is a
@@ -71,6 +72,12 @@ func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 	default:
 		return "", false
 	}
+	// Only a path is a route: "email:deliver", "user.created" or a cache key
+	// passed to a verb-named call are not. The empty path needs a prefix
+	// that is one.
+	if lit != "" && !strings.HasPrefix(lit, "/") {
+		return "", false
+	}
 
 	var prefixes []string
 	if recv != nil {
@@ -79,6 +86,9 @@ func Render(call *ast.CallExpr, enclosing ast.Node) (route string, ok bool) {
 		if prefixes, good = r.prefixes(recv, len(r.stack)); !good {
 			return "", false
 		}
+	}
+	if lit == "" && !strings.HasPrefix(path.Join(prefixes...), "/") {
+		return "", false
 	}
 	p := join(prefixes, lit)
 	if verb == "" {
@@ -175,8 +185,9 @@ type resolver struct {
 // the receiver is ambiguous or deeper than maxPrefixes.
 func (r resolver) prefixes(e ast.Expr, limit int) ([]string, bool) {
 	var rev []string // innermost first
+	aliases := 0     // plain "h := g" steps, which count toward maxPrefixes too
 	for {
-		if len(rev) > maxPrefixes {
+		if len(rev)+aliases > maxPrefixes {
 			return nil, false
 		}
 		switch x := e.(type) {
@@ -216,7 +227,10 @@ func (r resolver) prefixes(e ast.Expr, limit int) ([]string, bool) {
 				rev = append(rev, *add)
 			}
 			if root {
-				return reverse(rev), len(rev) <= maxPrefixes
+				return reverse(rev), len(rev)+aliases <= maxPrefixes
+			}
+			if _, alias := next.expr.(*ast.Ident); alias {
+				aliases++
 			}
 			e = next.expr
 			limit = next.limit
@@ -233,7 +247,8 @@ type step struct {
 }
 
 // identStep resolves one local variable: a Route closure parameter, a
-// variable assigned once from a prefix expression, or a chain root.
+// variable assigned once from a prefix expression or from another variable
+// (followed as the next step), or a chain root.
 func (r resolver) identStep(id *ast.Ident, limit int) (next step, add *string, root, ok bool) {
 	// A parameter of a func literal passed to X.Route("lit", func(p) {...}).
 	for i := limit - 1; i >= 1; i-- {
@@ -291,10 +306,17 @@ func (r resolver) identStep(id *ast.Ident, limit int) (next step, add *string, r
 	case n == 0 || rhs == nil:
 		return step{}, nil, true, true
 	}
-	if _, isCall := rhs.(*ast.CallExpr); !isCall {
-		return step{}, nil, true, true
+	switch x := ast.Unparen(rhs).(type) {
+	case *ast.CallExpr:
+		return step{expr: x, limit: limit}, nil, false, true
+	case *ast.Ident:
+		// h := g: g's prefixes are h's. A self-reference cannot be followed.
+		if x.Name == id.Name {
+			return step{}, nil, false, false
+		}
+		return step{expr: x, limit: limit}, nil, false, true
 	}
-	return step{expr: rhs, limit: limit}, nil, false, true
+	return step{}, nil, true, true
 }
 
 // isLocal reports whether name is a parameter, receiver or assigned

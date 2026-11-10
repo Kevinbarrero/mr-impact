@@ -296,6 +296,9 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			if len(cross) > 0 {
 				in.CrossPkgTestReached = true
 				m.CrossPkgOnly++
+				// The cover cell says "reached by tests in …": those tests
+				// may cover the lines a same-package profile marks 0.
+				uncovered = nil
 			}
 		}
 		in.Wiring = f.Wiring

@@ -27,8 +27,8 @@ type Registration struct {
 	Line    int
 	key     string // Callee + args, the handler by name: what Diff compares
 	slot    string // Callee + args, the handler as "…": the same call with another handler is a rewiring
-	// identity is Callee, the string-literal args and the handler: what
-	// PairChanged pairs on.
+	// identity is Callee, the string-literal args, the handler and the
+	// Route when one renders: what PairChanged pairs on.
 	identity string
 	attrs    []string // the other args as written, in order
 	// handlerText is the handler arg as written ("c.getStatus") and pos the
@@ -50,6 +50,14 @@ type Rewired struct {
 }
 
 const maxCallText = 90
+
+// Shorten cuts s to maxCallText runes, the last one "…".
+func Shorten(s string) string {
+	if rs := []rune(s); len(rs) > maxCallText {
+		return string(rs[:maxCallText-1]) + "…"
+	}
+	return s
+}
 
 // Find returns the registrations in the non-test, non-generated files of
 // pkgs whose handler is declared in module modulePath, sorted by file and
@@ -125,7 +133,7 @@ func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, l
 	if rt, ok := route.Render(call, enclosing); ok {
 		r.Route = rt
 	}
-	r.identity = identityOf(r.Callee, route.Literals(call), r.Handler)
+	r.identity = identityOf(r.Callee, r.Route, route.Literals(call), r.Handler)
 	shown := make([]string, len(call.Args))
 	keyed := make([]string, len(call.Args))
 	for i, a := range call.Args {
@@ -138,10 +146,7 @@ func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, l
 			r.attrs = append(r.attrs, shown[i])
 		}
 	}
-	r.Call = r.Callee + "(" + strings.Join(shown, ", ") + ")"
-	if rs := []rune(r.Call); len(rs) > maxCallText {
-		r.Call = string(rs[:maxCallText-1]) + "…"
-	}
+	r.Call = Shorten(r.Callee + "(" + strings.Join(shown, ", ") + ")")
 	r.key = r.Callee + "(" + strings.Join(keyed, ", ") + ")"
 	full := append([]string(nil), keyed...)
 	full[arg] = "…"
@@ -205,10 +210,10 @@ func Pair(removed, added []Registration) (rewired []Rewired, gone, fresh []Regis
 }
 
 // PairChanged moves a removed and an added registration of equal identity
-// (callee, string-literal args, handler) into changed, with the attributes
-// each side has that the other lacks. It pairs only when exactly one
-// candidate exists on each side, and not when the attributes differ only in
-// order; everything else stays in gone and fresh, in order.
+// (callee, string-literal args, handler, rendered route) into changed, with
+// the attributes each side has that the other lacks. It pairs only when
+// exactly one candidate exists on each side, and not when the attributes
+// differ only in order; everything else stays in gone and fresh, in order.
 func PairChanged(removed, added []Registration) (changed []Changed, gone, fresh []Registration) {
 	nRemoved, nAdded := map[string]int{}, map[string]int{}
 	for _, r := range removed {
@@ -337,8 +342,15 @@ func without(xs, ys []string) []string {
 	return out
 }
 
-func identityOf(callee string, literals []string, handler string) string {
-	return callee + "\x00" + strings.Join(literals, "\x00") + "\x00" + handler
+// identityOf is what PairChanged pairs on. A rendered route is part of it:
+// the same literal under another group prefix is another route, not a
+// change of the registration's middleware.
+func identityOf(callee, route string, literals []string, handler string) string {
+	id := callee + "\x00" + strings.Join(literals, "\x00") + "\x00" + handler
+	if route != "" {
+		id += "\x00" + route
+	}
+	return id
 }
 
 func isStringLit(e ast.Expr) bool {
