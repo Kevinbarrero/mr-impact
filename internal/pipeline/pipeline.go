@@ -300,14 +300,16 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		// Sensitive: a table API in its body, or a critical package. A
 		// declaration the program does not hold is not sensitive.
 		var apis []string
+		var sites []sensitive.Site
 		critical := ""
 		if fd, info, declPkg, ok := prog.FuncDecl(f.File, f.StartLine); ok {
 			in.Root = fd.Recv == nil && (fd.Name.Name == "init" || (fd.Name.Name == "main" && pkgName == "main"))
-			apis = table.Calls(fd, info)
+			sites = table.Sites(fd, info, prog.Fset)
 			if g, ok := sensitive.Critical(declPkg, prog.ModulePath, cfg.Critical); ok {
 				critical = g
 			}
 		}
+		apis = touchedAPIs(sites, f.AddedLines, critical)
 		in.Sensitive = len(apis) > 0 || critical != ""
 		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
 		var entries []callgraph.Entry
@@ -733,4 +735,29 @@ func entryRoot(prog *load.Program) func(callgraph.FuncInfo) bool {
 		}
 		return !f.Method || ast.IsExported(f.Recv)
 	}
+}
+
+// touchedAPIs is the distinct APIs (first-occurrence order) of the sites an
+// added line falls in; with a critical glob, every API of the function. A
+// function none of whose sensitive calls was touched has none.
+func touchedAPIs(sites []sensitive.Site, added []int, critical string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range sites {
+		if seen[s.API] {
+			continue
+		}
+		hit := critical != ""
+		for _, l := range added {
+			if hit {
+				break
+			}
+			hit = l >= s.From && l <= s.To
+		}
+		if hit {
+			seen[s.API] = true
+			out = append(out, s.API)
+		}
+	}
+	return out
 }

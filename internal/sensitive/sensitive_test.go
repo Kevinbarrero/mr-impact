@@ -375,3 +375,65 @@ func F(p []byte) { bcrypt.GenerateFromPassword(p, 10) }`, []string{"golang.org/x
 		})
 	}
 }
+
+func TestSites_LineSpans(t *testing.T) {
+	fd, info := funcF(t, `package p
+
+import (
+	"os"
+	"os/exec"
+)
+
+func F(p string) error {
+	os.Remove(p)
+	return exec.Command(p).Run()
+}`)
+	got := defaults(t).Sites(fd, info, fset)
+	want := []Site{
+		{API: "os.Remove", From: 9, To: 9},
+		{API: "os/exec.Command", From: 10, To: 10},
+		{API: "os/exec.(*Cmd).Run", From: 10, To: 10},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Sites = %v, want %v", got, want)
+	}
+}
+
+func TestSites_MultiLineCallSpan(t *testing.T) {
+	fd, info := funcF(t, `package p
+
+import (
+	"context"
+	"database/sql"
+)
+
+func F(ctx context.Context, db *sql.DB) {
+	db.ExecContext(
+		ctx,
+		"INSERT",
+	)
+}`)
+	got := defaults(t).Sites(fd, info, fset)
+	want := []Site{{API: "database/sql.(*DB).ExecContext", From: 9, To: 12}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Sites = %v, want %v", got, want)
+	}
+}
+
+func TestCalls_UnchangedOnSites(t *testing.T) {
+	fd, info := funcF(t, `package p
+
+import "os"
+
+func F(p string) {
+	os.Remove(p)
+	os.Remove(p)
+}`)
+	tab := defaults(t)
+	if n := len(tab.Sites(fd, info, fset)); n != 2 {
+		t.Errorf("Sites = %d, want 2", n)
+	}
+	if got := tab.Calls(fd, info); !reflect.DeepEqual(got, []string{"os.Remove"}) {
+		t.Errorf("Calls = %v", got)
+	}
+}

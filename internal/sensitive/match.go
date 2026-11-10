@@ -2,6 +2,7 @@ package sensitive
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"path"
 	"strings"
@@ -27,24 +28,48 @@ func (a api) String() string {
 	}
 }
 
+// Site is one use of a sensitive API: the line span of the call expression
+// (a reference that is not a call, such as a method value, spans its own
+// identifier).
+type Site struct {
+	API      string
+	From, To int
+}
+
 // Calls returns the APIs fn touches: resolved callees of calls, method values
 // and composite literal types in fn's body and every nested function literal,
 // rendered "pkgpath.Name" / "pkgpath.(*T).M" / "pkgpath.(T).M", deduplicated,
 // in first-occurrence source order.
 func (t Table) Calls(fn *ast.FuncDecl, info *types.Info) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range t.Sites(fn, info, token.NewFileSet()) {
+		if !seen[s.API] {
+			seen[s.API] = true
+			out = append(out, s.API)
+		}
+	}
+	return out
+}
+
+// Sites returns every use of a table API in fn, in source order, one per
+// use, with the line span of the whole call expression so an added argument
+// line of a multi-line call counts as touching it.
+func (t Table) Sites(fn *ast.FuncDecl, info *types.Info, fset *token.FileSet) []Site {
 	if fn == nil || fn.Body == nil || info == nil || len(t.patterns) == 0 {
 		return nil
 	}
-	var out []string
-	seen := map[string]bool{}
-	add := func(a api, ok bool) {
+	var out []Site
+	callOf := map[*ast.Ident]ast.Node{} // callee identifier -> its call
+	add := func(a api, ok bool, span ast.Node) {
 		if !ok || !t.match(a) {
 			return
 		}
-		if s := a.String(); !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
+		out = append(out, Site{
+			API:  a.String(),
+			From: fset.Position(span.Pos()).Line,
+			To:   fset.Position(span.End()).Line,
+		})
 	}
 	// ast.Inspect descends into *ast.FuncLit bodies, so nested closures are
 	// covered with no extra work.
@@ -54,18 +79,48 @@ func (t Table) Calls(fn *ast.FuncDecl, info *types.Info) []string {
 			// Every function or method reference: a call, a method value,
 			// a method expression or a function value. Uses also records the
 			// Sel of a selector, so x.M lands here.
-			add(objectAPI(info.Uses[n]))
+			var span ast.Node = n
+			if c, ok := callOf[n]; ok {
+				span = c
+			}
+			a, ok := objectAPI(info.Uses[n])
+			add(a, ok, span)
 		case *ast.CallExpr:
+			if id := calleeIdent(n.Fun); id != nil {
+				callOf[id] = n
+			}
 			// A conversion, e.g. unsafe.Pointer(p).
 			if tv, ok := info.Types[n.Fun]; ok && tv.IsType() {
-				add(typeAPI(tv.Type))
+				a, ok := typeAPI(tv.Type)
+				add(a, ok, n)
 			}
 		case *ast.CompositeLit:
-			add(typeAPI(info.TypeOf(n)))
+			a, ok := typeAPI(info.TypeOf(n))
+			add(a, ok, n)
 		}
 		return true
 	})
 	return out
+}
+
+// calleeIdent is the identifier naming the function a call's Fun denotes.
+func calleeIdent(e ast.Expr) *ast.Ident {
+	for {
+		switch x := e.(type) {
+		case *ast.ParenExpr:
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.IndexListExpr:
+			e = x.X
+		case *ast.SelectorExpr:
+			return x.Sel
+		case *ast.Ident:
+			return x
+		default:
+			return nil
+		}
+	}
 }
 
 func (t Table) match(a api) bool {
