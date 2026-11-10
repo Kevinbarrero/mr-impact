@@ -247,3 +247,17 @@ func TestInstallScript_WgetOnly(t *testing.T) {
 		assertInstalled(t, bindir, out, err)
 	}
 }
+
+func TestInstallScript_UnknownVersion(t *testing.T) {
+	needTools(t)
+	srv := server(t, nil)
+	bindir := filepath.Join(t.TempDir(), "bin")
+	out, err := run(t, srv, "", nil, "-b", bindir, "v9.9.9")
+	if err == nil {
+		t.Fatalf("expected failure, got success:\n%s", out)
+	}
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		t.Errorf("exit = %v, want 1", err)
+	}
+	assertNothingInstalled(t, bindir)
+}

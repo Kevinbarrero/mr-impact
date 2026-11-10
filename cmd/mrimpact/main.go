@@ -1,5 +1,5 @@
-// Command mrimpact analyzes a GitLab merge request's changed Go functions and
-// posts one risk-ranked note.
+// Command mrimpact analyzes a GitLab merge request or GitHub pull request's
+// changed Go functions and posts one risk-ranked note.
 package main
 
 import (
@@ -70,7 +70,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	strict := fs.Bool("strict", false, "exit 2 on internal or post failure")
 	skipEmpty := fs.Bool("skip-empty", false, "do not post when there are no Go changes")
 	showVersion := fs.Bool("version", false, "print the version and exit")
-	noPost := fs.Bool("no-post", false, "shadow mode: never post to GitLab")
+	noPost := fs.Bool("no-post", false, "shadow mode: never post a comment")
 	out := fs.String("out", "mrimpact-report.md", "write the note to this file")
 	configPath := fs.String("config", "", "config file (default: .mrimpact.yml in --dir, optional)")
 	if err := fs.Parse(args); err != nil {

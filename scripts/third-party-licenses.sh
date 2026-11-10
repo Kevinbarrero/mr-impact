@@ -28,4 +28,9 @@ for mod in $mods; do
 	fi
 	count=$((count + 1))
 done
+# The Go standard library and runtime are linked into the binary too.
+goroot=$(go env GOROOT)
+[ -f "$goroot/LICENSE" ] || { echo "third-party-licenses: no LICENSE in $goroot" >&2; exit 1; }
+mkdir -p "$out/go"
+cp "$goroot/LICENSE" "$out/go/LICENSE"
 echo "third-party-licenses: $count modules written to $out/"

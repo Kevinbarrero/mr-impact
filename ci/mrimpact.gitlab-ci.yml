@@ -23,7 +23,11 @@ mrimpact:
         MRIMPACT_COVERPROFILE=mrimpact.cover
       fi
       ref=$MRIMPACT_VERSION
-      [ "$ref" = "latest" ] && ref=main
+      case $ref in
+        latest) ref=main ;;
+        v*) ;;
+        *) ref=v$ref ;;
+      esac
       curl -fsSL "https://raw.githubusercontent.com/Kevinbarrero/mr-impact/${ref}/install.sh" -o install.sh
       sh install.sh -b "$PWD/.mrimpact-bin" "$MRIMPACT_VERSION"
       set --

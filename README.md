@@ -233,7 +233,7 @@ Flags, configuration, the action inputs, the GitLab variables and every section 
 
 Notes from merged pull requests of well-known Go projects, unedited, with the commands that produced them ([all examples](docs/examples/README.md)):
 
-- [gin-gonic/gin#4800](docs/examples/gin-4800.md): three `net/http.Server` call sites flagged as sensitive, the `ginS` wrappers reached, and a callers list showing that `RunUnix` did not get the new `ReadHeaderTimeout`.
+- [gin-gonic/gin#4800](docs/examples/gin-4800.md): three `net/http.Server` call sites flagged as sensitive, the `ginS` wrappers reached, and a callers list from which a reviewer can check whether `RunUnix` is covered by the new `ReadHeaderTimeout`.
 - [spf13/cobra#1956](docs/examples/cobra-1956.md): the one function left executing `text/template`, reached only from the `Set*Template` API, which is the point of the PR.
 - [caddyserver/caddy#8346](docs/examples/caddy-8346.md): a red row with 84 % coverage, because an exported function of an importable package changed its signature.
 - [prometheus/prometheus#20028](docs/examples/prometheus-20028.md): new HTTP routes, an exported constructor's new parameters and an inferred architecture hint, in static mode; with one misfire (a registration call given new arguments shown as removed and added).
