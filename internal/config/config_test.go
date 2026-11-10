@@ -170,6 +170,10 @@ func TestParse_ArchitectureErrors(t *testing.T) {
 		"architecture:\n  layers: [a]\n":                                     "mapping",
 		"architecture:\n  preset: modular\n  layers:\n    a: [x]\n":          "modular",
 		"architecture:\n  preset: modular\n  isolated: [a]\n":                "modular",
+		"architecture:\n  layers:\n    a: [x]\n  allow: [\"a->b\"]\n":        "a->b",
+		"architecture:\n  layers:\n    a: [x]\n  allow: [\"a ->b\"]\n":       "a ->b",
+		"architecture:\n  layers:\n    a: [x]\n  allow: [\"a-> b\"]\n":       "a-> b",
+		"architecture:\n  layers:\n    a: []\n":                              "layer \"a\"",
 		"architecture:\n  preset: clean\n  bogus: 1\n":                       "bogus",
 	}
 	for y, want := range cases {
