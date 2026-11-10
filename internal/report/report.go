@@ -81,6 +81,7 @@ type SensitiveRow struct {
 type ConfigNote struct {
 	File                    string   // as named: ".mrimpact.yml" or the --config path
 	Critical, Removes, Adds []string // head (effective) values
+	Architecture            string   // preset or "custom"; "" when the block is unset
 	Changed                 bool     // head differs from base
 	BaseUnreadable          bool     // the base file did not parse
 	Changes                 []config.Change
@@ -235,6 +236,9 @@ func writeConfigNote(b *strings.Builder, c *ConfigNote) {
 	}
 	if len(c.Adds) > 0 {
 		parts = append(parts, "adds "+codeJoin(c.Adds))
+	}
+	if c.Architecture != "" {
+		parts = append(parts, "architecture "+c.Architecture)
 	}
 	if len(parts) == 0 {
 		parts = []string{"defaults"}

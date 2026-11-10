@@ -51,7 +51,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	fs.Var(&profiles, "coverprofile", "coverage profile glob (repeatable)")
 	tags := fs.String("tags", "", "comma-separated build tags")
 	timeout := fs.Duration("timeout", 5*time.Minute, "call graph time budget")
-	failOn := fs.String("fail-on", "", `exit 1 when set to "red" and a red function exists`)
+	failOn := fs.String("fail-on", "", `comma list of gates that exit 1: "red" (a red function exists), "arch" (a new violation of the declared architecture)`)
 	strict := fs.Bool("strict", false, "exit 2 on internal or post failure")
 	skipEmpty := fs.Bool("skip-empty", false, "do not post when there are no Go changes")
 	noPost := fs.Bool("no-post", false, "shadow mode: never post to GitLab")
@@ -68,13 +68,14 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		fs.Usage()
 		return 2
 	}
+	gates, failErr := parseFailOn(*failOn)
 	switch {
 	case fs.NArg() > 0:
 		return usage("unexpected argument %q", fs.Arg(0))
 	case *base == "":
 		return usage("--base is required (or CI_MERGE_REQUEST_DIFF_BASE_SHA)")
-	case *failOn != "" && *failOn != "red":
-		return usage(`--fail-on must be "" or "red", got %q`, *failOn)
+	case failErr != nil:
+		return usage("%v", failErr)
 	case *depth < 1:
 		return usage("--depth must be >= 1")
 	case *timeout <= 0:
@@ -152,14 +153,35 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	if *strict && internalFailure {
 		return 2
 	}
-	if *failOn == "red" {
+	if gates["red"] {
 		for _, f := range m.Funcs {
 			if f.Level == risk.Red {
 				return 1
 			}
 		}
 	}
+	// Only a declared architecture gates, and only against a readable base:
+	// without a base nothing is "new".
+	if gates["arch"] && m.Arch != nil && !m.Arch.Inferred && !m.Arch.BaseMissing && len(m.Arch.New) > 0 {
+		return 1
+	}
 	return 0
+}
+
+// parseFailOn splits the --fail-on comma list; items are trimmed, empty ones
+// ignored, anything but red or arch is an error naming it.
+func parseFailOn(v string) (map[string]bool, error) {
+	gates := map[string]bool{}
+	for _, it := range strings.Split(v, ",") {
+		switch it = strings.TrimSpace(it); it {
+		case "":
+		case "red", "arch":
+			gates[it] = true
+		default:
+			return nil, fmt.Errorf(`--fail-on: unknown gate %q (want "red" and/or "arch", comma-separated)`, it)
+		}
+	}
+	return gates, nil
 }
 
 // repoRel returns p relative to the repository root dir, slash-separated, or

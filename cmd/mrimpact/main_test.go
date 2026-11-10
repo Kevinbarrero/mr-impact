@@ -335,3 +335,49 @@ func TestRun_ExplicitConfigInRepoCompared(t *testing.T) {
 		t.Errorf("missing %q in\n%s", want, stdout)
 	}
 }
+
+func TestMain_FailOnList(t *testing.T) {
+	repo, base := fixture(t, "no_go_changes")
+	out := filepath.Join(t.TempDir(), "r.md")
+	for _, v := range []string{"red,arch", "arch", " red , ", ""} {
+		if code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", v, "--out", out); code != 0 {
+			t.Errorf("--fail-on %q: code=%d stderr=%s", v, code, stderr)
+		}
+	}
+	code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "red,bogus", "--out", out)
+	if code != 2 || !strings.Contains(stderr, "bogus") {
+		t.Fatalf("bogus: code=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestMain_FailOnArchDeclared(t *testing.T) {
+	repo, base := fixture(t, "arch_hexagonal")
+	out := filepath.Join(t.TempDir(), "r.md")
+	if code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "arch", "--out", out); code != 1 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+	if code, _, _ := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "red", "--out", out); code != 0 {
+		t.Fatalf("red only: code=%d", code)
+	}
+}
+
+func TestMain_FailOnArchInferredPasses(t *testing.T) {
+	repo, base := fixture(t, "arch_inferred")
+	out := filepath.Join(t.TempDir(), "r.md")
+	if code, _, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "arch", "--out", out); code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, stderr)
+	}
+}
+
+func TestMain_FailOnRedUnchanged(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	out := filepath.Join(t.TempDir(), "r.md")
+	for _, v := range []string{"red", "red,arch", "arch,red"} {
+		if code, _, _ := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", v, "--out", out); code != 1 {
+			t.Errorf("--fail-on %q: code=%d, want 1", v, code)
+		}
+	}
+	if code, _, _ := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "arch", "--out", out); code != 0 {
+		t.Errorf("arch only on red fixture: code=%d", code)
+	}
+}
