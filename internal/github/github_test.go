@@ -270,3 +270,58 @@ func TestUpsert_CustomAuthor(t *testing.T) {
 		t.Errorf("patch path %q", got)
 	}
 }
+
+func TestUpsert_RefusesForeignPaginationHost(t *testing.T) {
+	var hits int
+	var mu sync.Mutex
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+	}))
+	defer other.Close()
+	c, f, _ := newServer(t, func(_ string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s/steal?page=2>; rel="next"`, other.URL))
+		list(w, cm(1, bot, "x"))
+	})
+	err := c.Upsert(context.Background(), "o/r", 1, marker, "b")
+	if err == nil || !strings.Contains(err.Error(), "another host") {
+		t.Fatalf("err %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 0 || f.count("GET") != 1 || f.count("POST") != 0 {
+		t.Fatalf("hits %d reqs %+v", hits, f.reqs)
+	}
+}
+
+func TestUpsert_RelativeNextResolved(t *testing.T) {
+	c, f, _ := newServer(t, func(_ string, w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			if r.URL.Query().Get("page") == "2" {
+				list(w, cm(8, bot, marker))
+				return
+			}
+			w.Header().Set("Link", `</repos/o/r/issues/1/comments?per_page=100&page=2>; rel="next"`)
+			list(w)
+			return
+		}
+		w.WriteHeader(200)
+	})
+	if err := c.Upsert(context.Background(), "o/r", 1, marker, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if f.count("GET") != 2 || f.count("PATCH") != 1 {
+		t.Fatalf("reqs %+v", f.reqs)
+	}
+}
+
+func TestUpsert_ListClientErrorNotRetried(t *testing.T) {
+	c, f, sleeps := newServer(t, func(_ string, w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) })
+	if err := c.Upsert(context.Background(), "o/r", 1, marker, "b"); err == nil {
+		t.Fatal("want error")
+	}
+	if len(f.reqs) != 1 || len(*sleeps) != 0 {
+		t.Fatalf("reqs %d sleeps %v", len(f.reqs), *sleeps)
+	}
+}
