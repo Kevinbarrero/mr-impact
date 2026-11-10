@@ -286,8 +286,9 @@ func (x *indexer) site(fn *ssa.Function, instr ssa.Instruction, v ssa.Value) Sit
 
 // argCall finds the call that takes v (directly, or after it is bound as a
 // method value or converted) as an argument, and the argument's index.
-// variadic is true when v is an element of the slice built for a variadic
-// parameter (h in g.POST("/x", mw, h)); arg is then that slice's index.
+// variadic is true when v is an element of a slice passed to the call: the
+// list built for a variadic parameter (h in g.POST("/x", mw, h)) or a slice
+// literal passed as a []T argument; arg is then that slice's index.
 func argCall(instr ssa.Instruction, v ssa.Value) (call ssa.CallInstruction, arg int, variadic bool) {
 	cur := v
 	for range 4 {
@@ -300,7 +301,7 @@ func argCall(instr ssa.Instruction, v ssa.Value) (call ssa.CallInstruction, arg 
 			return nil, 0, false
 		}
 		if st, ok := instr.(*ssa.Store); ok && st.Val == cur {
-			call, arg := variadicCall(st)
+			call, arg := sliceCall(st)
 			return call, arg, call != nil
 		}
 		next, ok := instr.(ssa.Value)
@@ -321,10 +322,13 @@ func argCall(instr ssa.Instruction, v ssa.Value) (call ssa.CallInstruction, arg 
 	return nil, 0, false
 }
 
-// variadicCall follows the SSA shape of a variadic argument list: a store
-// into an element of an array Alloc, sliced, and the slice passed to a call.
-// It returns that call and the slice's argument index, or nil.
-func variadicCall(st *ssa.Store) (ssa.CallInstruction, int) {
+// sliceCall follows the SSA shape of a slice literal or variadic argument
+// list passed to a call: a store into an element of an array Alloc, the
+// Alloc sliced once, and that slice's only use a real call (not a builtin
+// such as len or append, not a range loop). It returns that call and the
+// slice's argument index, or nil when the slice has any other shape, so the
+// site keeps its file:line.
+func sliceCall(st *ssa.Store) (ssa.CallInstruction, int) {
 	ia, ok := st.Addr.(*ssa.IndexAddr)
 	if !ok {
 		return nil, 0
@@ -333,24 +337,42 @@ func variadicCall(st *ssa.Store) (ssa.CallInstruction, int) {
 	if !ok || alloc.Referrers() == nil {
 		return nil, 0
 	}
+	var sl *ssa.Slice
 	for _, r := range *alloc.Referrers() {
-		sl, ok := r.(*ssa.Slice)
-		if !ok || sl.X != ssa.Value(alloc) || sl.Referrers() == nil {
-			continue
-		}
-		for _, sr := range *sl.Referrers() {
-			call, ok := sr.(ssa.CallInstruction)
-			if !ok {
-				continue
+		switch r := r.(type) {
+		case *ssa.IndexAddr:
+		case *ssa.Slice:
+			if sl != nil {
+				return nil, 0
 			}
-			for i, a := range call.Common().Args {
-				if a == ssa.Value(sl) {
-					return call, i
-				}
-			}
+			sl = r
+		default:
+			return nil, 0
 		}
 	}
-	return nil, 0
+	if sl == nil || sl.Referrers() == nil || len(*sl.Referrers()) != 1 {
+		return nil, 0
+	}
+	call, ok := (*sl.Referrers())[0].(ssa.CallInstruction)
+	if !ok || !call.Pos().IsValid() {
+		return nil, 0
+	}
+	if _, builtin := call.Common().Value.(*ssa.Builtin); builtin {
+		return nil, 0
+	}
+	idx := -1
+	for i, a := range call.Common().Args {
+		if a == ssa.Value(sl) {
+			if idx >= 0 {
+				return nil, 0
+			}
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return nil, 0
+	}
+	return call, idx
 }
 
 const maxCallText = 90

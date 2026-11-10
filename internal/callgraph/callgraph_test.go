@@ -464,7 +464,7 @@ func TestSite_Variadic(t *testing.T) {
 // resolve to the same call text.
 func TestSite_VariadicTwoModuleFuncs(t *testing.T) {
 	mw, h := registeredAt(t, "mw"), registeredAt(t, "h")
-	if len(mw) != 1 || len(h) != 1 || mw[0].Call == "" || mw[0].Text() != h[0].Text() {
+	if len(mw) != 1 || len(h) != 1 || mw[0].Call != "POST /x" || mw[0].Text() != h[0].Text() {
 		t.Errorf("mw = %+v, h = %+v, want one equal non-empty call each", mw, h)
 	}
 }
@@ -483,5 +483,36 @@ func TestSite_VariadicNotRoute(t *testing.T) {
 	a, b := registeredAt(t, "u1"), registeredAt(t, "u2")
 	if len(a) != 1 || a[0].Call != "Use(u1, u2)" || len(b) != 1 || b[0].Call != a[0].Call {
 		t.Errorf("u1 = %+v, u2 = %+v, want Use(u1, u2) each", a, b)
+	}
+}
+
+// A slice whose use is not exactly one real call (a range loop, len or
+// append before the call, two calls) is not guessed at: the site keeps its
+// file:line.
+func TestSite_SliceNotOneCallKeepsFileLine(t *testing.T) {
+	const dir, file = "testdata/entries", "internal/router/router.go"
+	for _, tc := range []struct{ fn, line string }{
+		{"r1", "range []func(){r1, r2}"},
+		{"l1", "hs := []func(){l1}"},
+		{"a1", "hs := []func(){a1}"},
+		{"t1", "hs := []func(){t1}"},
+	} {
+		got := registeredAt(t, tc.fn)
+		want := []Site{{File: file, Line: lineOf(t, dir, file, tc.line)}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: Registered = %+v, want %+v", tc.fn, got, want)
+		}
+	}
+}
+
+// An explicit spread keeps its "..." in the call text.
+func TestSite_SpreadKeepsEllipsis(t *testing.T) {
+	got := registeredAt(t, "s1")
+	if len(got) != 1 || got[0].Call != "Use(mws...)" {
+		t.Errorf("Registered = %+v, want Use(mws...)", got)
+	}
+	got = registeredAt(t, "s3")
+	if len(got) != 1 || got[0].Call != "Use([]func(){…}...)" {
+		t.Errorf("Registered = %+v, want Use([]func(){…}...) (ExprString elides literals)", got)
 	}
 }
