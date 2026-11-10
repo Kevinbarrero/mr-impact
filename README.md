@@ -69,7 +69,7 @@ Only import paths and directory names are used. Edges are module-internal import
 | `pipeline` | one layer per `stages` entry | a stage imports only earlier stages; each stage is isolated |
 | `modular` | one per child directory of `modules_root` (default `internal`) | another module may be imported only through its root package (`internal/orders`, not `internal/orders/store`); inside a module anything goes |
 
-An **isolated** layer's packages may import each other only along one directory path (`adapters/pg` → `adapters/pg/rows`), never sideways (`adapters/http` → `adapters/pg`).
+An **isolated** layer's packages may import each other only inside one unit (the layer's directory plus one more segment: `internal/controller/http/x` → `internal/controller/http/common`) or along one directory path (`adapters/pg` → `adapters/pg/rows`), never between two units (`adapters/http` → `adapters/pg`). A layer matched by a glob has no unit: directory path only.
 
 **Configuration** (all optional, strict like the rest of the file):
 

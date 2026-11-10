@@ -13,13 +13,13 @@ type Violation struct {
 // not judged. Violations are sorted by file, line, target.
 func (m Model) Judge(g Graph) (judged int, violations []Violation) {
 	for _, e := range g.Edges {
-		fl, ok1 := m.ClassifyNamed(g.Module, e.From, g.Names[e.From])
-		tl, ok2 := m.ClassifyNamed(g.Module, e.To, g.Names[e.To])
+		fl, fu, ok1 := m.classifyUnit(g.Module, e.From, g.Names[e.From])
+		tl, tu, ok2 := m.classifyUnit(g.Module, e.To, g.Names[e.To])
 		if !ok1 || !ok2 {
 			continue
 		}
 		judged++
-		okEdge, isolated := m.allowed(g.Module, e, fl, tl)
+		okEdge, isolated := m.allowed(g.Module, e, fl, tl, fu, tu)
 		if !okEdge {
 			violations = append(violations, Violation{Edge: e, FromLayer: fl, ToLayer: tl, Isolated: isolated})
 		}
@@ -38,8 +38,9 @@ func (m Model) Judge(g Graph) (judged int, violations []Violation) {
 }
 
 // allowed reports whether the edge conforms; isolated is set when the
-// isolation rule was the one broken. entry -> entry is allowed (same layer).
-func (m Model) allowed(module string, e Edge, from, to string) (ok, isolated bool) {
+// isolation rule was the one broken. Packages of an isolated layer may import
+// each other within one unit (see classifyUnit) or along one directory path. entry -> entry is allowed (same layer).
+func (m Model) allowed(module string, e Edge, from, to, fromUnit, toUnit string) (ok, isolated bool) {
 	if from == EntryLayer && to == EntryLayer {
 		return true, false
 	}
@@ -57,7 +58,8 @@ func (m Model) allowed(module string, e Edge, from, to string) (ok, isolated boo
 	}
 	if from == to {
 		for _, l := range m.Layers {
-			if l.Name == from && l.Isolated && e.From != e.To &&
+			sameUnit := fromUnit != "" && fromUnit == toUnit
+			if l.Name == from && l.Isolated && e.From != e.To && !sameUnit &&
 				!hasDirPrefix(e.From, e.To) && !hasDirPrefix(e.To, e.From) {
 				return false, true
 			}
