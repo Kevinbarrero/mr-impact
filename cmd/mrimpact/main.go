@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
 	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/gitlab"
 	"gitlab.com/wh1t3hat/mrimpact/internal/pipeline"
@@ -97,6 +98,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	if err == nil {
 		table, err = sensitive.NewTable(fileCfg.SensitiveAdd, fileCfg.SensitiveRemove)
 	}
+	var model arch.Model
+	if err == nil {
+		model, err = arch.FromConfig(fileCfg.Architecture)
+	}
 	if err != nil {
 		msg := strings.TrimPrefix(err.Error(), config.ErrConfig.Error()+": ")
 		warnf("config: %s", strings.Join(strings.Fields(msg), " "))
@@ -108,6 +113,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		CoverProfiles: profiles, Timeout: *timeout,
 		Sensitive: &table, Critical: fileCfg.Critical,
 		File: &fileCfg, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml",
+		Arch: &model,
 	}
 	if *configPath != "" {
 		cfg.FileName, cfg.FileRel = *configPath, repoRel(*dir, *configPath)

@@ -268,6 +268,33 @@ func TestMain_BadSensitivePatternExits2(t *testing.T) {
 	}
 }
 
+// An architecture block that parses but names a layer the preset lacks is
+// refused by the model builder through the same exit-2 path.
+func TestMain_UnknownArchLayerExits2(t *testing.T) {
+	repo, base := fixture(t, "exported_signature")
+	if err := os.WriteFile(filepath.Join(repo, ".mrimpact.yml"), []byte("architecture:\n  preset: hexagonal\n  allow: [\"domain -> nosuch\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "r.md")
+	code, stdout, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--out", out)
+	if code != 2 || !strings.HasPrefix(stderr, "mrimpact: config: ") || !strings.Contains(stderr, "nosuch") || strings.Count(stderr, "\n") != 1 {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a note was printed: %q", stdout)
+	}
+}
+
+// The declared model reaches the note.
+func TestRun_DeclaredArchInNote(t *testing.T) {
+	repo, base := fixture(t, "arch_hexagonal")
+	out := filepath.Join(t.TempDir(), "r.md")
+	code, stdout, stderr := exec(t, env{}, "--dir", repo, "--base", base, "--out", out)
+	if code != 0 || !strings.Contains(stdout, "🏛 **Architecture** (hexagonal) · ") {
+		t.Fatalf("code=%d stderr=%q stdout:\n%s", code, stderr, stdout)
+	}
+}
+
 // Review Focus 4: .mrimpact.yml is read from --dir, not the working directory.
 func TestRun_ConfigReadFromDir(t *testing.T) {
 	repo, base := fixture(t, "config_file")

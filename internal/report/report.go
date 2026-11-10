@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
 	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
 	"gitlab.com/wh1t3hat/mrimpact/internal/config"
 	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
@@ -25,6 +26,7 @@ const (
 	maxCallerList  = 10
 	maxUnusedList  = 15
 	maxInlineList  = 5 // longer lists are counted and collapsed
+	maxArchList    = 15
 )
 
 // FuncRow is one changed function.
@@ -89,6 +91,7 @@ type Model struct {
 	Funcs        []FuncRow          // unsorted; Render sorts by Level desc, len(Callers) desc, Display
 	Sensitive    []SensitiveRow     // unsorted; Render lists untested first, then by Display
 	Config       *ConfigNote        // nil: nothing to say about the config file
+	Arch         *arch.Result       // nil: no architecture analysis (e.g. an early failure)
 	RemovedCases []RemovedCase      // behaviour changes: first in the note
 	Unused       []callgraph.Unused // functions this MR left without callers
 	// UnusedGenerated: generated functions (sqlc, protobuf, mocks) nothing
@@ -176,6 +179,7 @@ func Render(m Model) string {
 	writeRewired(&b, m.RegRewired)
 	writeRegistrations(&b, "🔌 **Registrations added**", "head", m.RegAdded)
 	writeSensitive(&b, m.Sensitive)
+	writeArch(&b, m.Arch)
 
 	// With no rated functions there is nothing for the table, diagram or
 	// caller list to show; only the context lines and limits remain.
@@ -549,6 +553,93 @@ func writeSensitive(b *strings.Builder, rs []SensitiveRow) {
 		fmt.Fprintf(b, "- %s `%s` — %s · %s\n", r.Level.Emoji(), r.Display, strings.Join(parts, ", "), r.CoverText)
 	}
 	b.WriteString("\n")
+}
+
+// archShown reports whether the 🏛 section has anything to say: a new
+// violation, a conformance change (nil vs value counts), or a coupling change.
+// Without a base only head conformance is known: shown when anything was judged.
+func archShown(a *arch.Result) bool {
+	switch {
+	case a == nil:
+		return false
+	case a.BaseMissing:
+		return a.HeadConf != nil
+	}
+	confChanged := (a.BaseConf == nil) != (a.HeadConf == nil) ||
+		(a.BaseConf != nil && *a.BaseConf != *a.HeadConf)
+	return len(a.New) > 0 || confChanged || len(a.Coupling) > 0
+}
+
+// writeArch writes the 🏛 section: header, new violations, coupling deltas.
+func writeArch(b *strings.Builder, a *arch.Result) {
+	if !archShown(a) {
+		return
+	}
+	rel := func(p string) string {
+		if p == a.Module {
+			return "."
+		}
+		return strings.TrimPrefix(p, a.Module+"/")
+	}
+	conf := func(c *float64) string {
+		if c == nil {
+			return "n/a"
+		}
+		return fmt.Sprintf("%.1f %%", *c)
+	}
+	if a.Inferred {
+		b.WriteString("🏛 **Architecture (inferred — hints, not enforced)**")
+	} else {
+		fmt.Fprintf(b, "🏛 **Architecture** (%s)", a.Model)
+	}
+	if a.BaseMissing {
+		fmt.Fprintf(b, " · conformance %s", conf(a.HeadConf))
+	} else {
+		fmt.Fprintf(b, " · conformance %s → %s", conf(a.BaseConf), conf(a.HeadConf))
+	}
+	fmt.Fprintf(b, " · %d/%d packages classified", a.Classified, a.Total)
+	if a.Inferred && len(a.TouchedLayers) > 0 {
+		ls := make([]string, len(a.TouchedLayers))
+		for i, t := range a.TouchedLayers {
+			ls[i] = codeSpan(rel(t.Pkg)) + " → " + t.Layer
+		}
+		b.WriteString(" · layers: " + strings.Join(ls, ", "))
+	}
+	if a.BaseMissing {
+		b.WriteString(" · (base not loaded: new violations not computed)\n\n")
+		return
+	}
+	b.WriteString("\n\n")
+
+	if len(a.New) > 0 {
+		for i, v := range a.New {
+			if i == maxArchList {
+				fmt.Fprintf(b, "- … and %d more\n", len(a.New)-maxArchList)
+				break
+			}
+			fmt.Fprintf(b, "- ❌ new: `%s → %s`", v.FromLayer, v.ToLayer)
+			if v.Isolated {
+				b.WriteString(" (isolated)")
+			}
+			fmt.Fprintf(b, " — `%s:%d` imports %s", v.Edge.File, v.Edge.Line, codeSpan(rel(v.Edge.To)))
+			if i == 0 && a.Existing > 0 {
+				fmt.Fprintf(b, " (+%d violations already in base)", a.Existing)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	if len(a.Coupling) > 0 {
+		fmt.Fprintf(b, "<details><summary>Coupling (%d packages changed)</summary>\n\n", len(a.Coupling))
+		b.WriteString("| Package | Ca | Ce | I | A | D |\n|---|---|---|---|---|---|\n")
+		for _, c := range a.Coupling {
+			fmt.Fprintf(b, "| %s | %d → %d | %d → %d | %.2f → %.2f | %.2f → %.2f | %.2f → %.2f |\n",
+				cell(codeSpan(rel(c.Pkg))), c.Base.Ca, c.Head.Ca, c.Base.Ce, c.Head.Ce,
+				c.Base.I, c.Head.I, c.Base.A, c.Head.A, c.Base.D, c.Head.D)
+		}
+		b.WriteString("\n</details>\n\n")
+	}
 }
 
 func writeRemovedCases(b *strings.Builder, cs []RemovedCase) {
