@@ -69,11 +69,11 @@ func FromConfig(a config.Architecture) (Model, error) {
 		return slices.IndexFunc(m.Layers, func(l Layer) bool { return l.Name == n })
 	}
 	for _, s := range a.Allow {
-		from, to, ok := strings.Cut(s, "->")
-		from, to = strings.TrimSpace(from), strings.TrimSpace(to)
-		if !ok || from == "" || to == "" || strings.Contains(to, "->") {
+		f := strings.Fields(s)
+		if len(f) != 3 || f[1] != "->" {
 			return bad("allow %q is not \"<layer> -> <layer>\"", s)
 		}
+		from, to := f[0], f[2]
 		for _, n := range []string{from, to} {
 			if !known(n) {
 				return bad("allow %q names unknown layer %q", s, n)

@@ -52,7 +52,7 @@ var presetNames = []string{"clean", "onion", "hexagonal", "ddd", "layered", "mvc
 func PresetNames() []string { return slices.Clone(presetNames) }
 
 var (
-	allowRE = regexp.MustCompile(`^\s*[A-Za-z0-9_-]+\s*->\s*[A-Za-z0-9_-]+\s*$`)
+	allowRE = regexp.MustCompile(`^\s*[A-Za-z0-9_-]+\s+->\s+[A-Za-z0-9_-]+\s*$`)
 	nameRE  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
@@ -162,6 +162,9 @@ func parseArchitecture(name string, a *archShape) (Architecture, error) {
 					return bad("layer %q glob %q: %v", lname, e.Value, err)
 				}
 				lg.Globs = append(lg.Globs, cleanGlob(e.Value))
+			}
+			if len(lg.Globs) == 0 {
+				return bad("layer %q has no globs", lname)
 			}
 			out.Layers = append(out.Layers, lg)
 		}
