@@ -285,9 +285,11 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		pkgPath := pkgPathOf(prog.ModulePath, f.File)
 		var cross []string
+		var uncovered []int
 		if prof != nil {
 			in.HasProfile = true
 			in.Covered, in.Total = prof.Lines(f.File, f.AddedLines)
+			uncovered = prof.Uncovered(f.File, f.AddedLines)
 			if in.Total > 0 && in.Covered == 0 {
 				cross = crossPkgTests(pkgPath, im.TestPkgs)
 			}
@@ -333,7 +335,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		rated = append(rated, ratedFunc{
 			Row: report.FuncRow{
 				Level: level, Display: f.Display, Kind: kindText(f, in.Sensitive),
-				Callers: im.Callers, CoverText: cover, Registered: im.Registered, Entries: entries, File: f.File,
+				Callers: im.Callers, CoverText: cover, Registered: im.Registered, Entries: entries, File: f.File, Uncovered: uncovered,
 			},
 			Key: f.Display + "\x00" + pkgPath, New: f.Kind == symbols.New, In: in,
 			Callers1: callers1, CrossPkgs: cross,

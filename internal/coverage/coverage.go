@@ -141,3 +141,34 @@ func (p *Profile) Lines(file string, lines []int) (covered, total int) {
 	}
 	return covered, total
 }
+
+// Uncovered returns the lines of lines that fall inside some block and inside
+// no covered block, ascending. A line outside every block (comment, blank) is
+// neither covered nor uncovered. A nil Profile or unknown file gives nil.
+func (p *Profile) Uncovered(file string, lines []int) []int {
+	if p == nil {
+		return nil
+	}
+	fb := p.files[file]
+	if fb == nil {
+		return nil
+	}
+	var out []int
+	for _, l := range lines {
+		in, cov := false, false
+		for _, b := range fb.blocks {
+			if l >= b.span.start && l <= b.span.end {
+				in = true
+				if b.covered {
+					cov = true
+					break
+				}
+			}
+		}
+		if in && !cov {
+			out = append(out, l)
+		}
+	}
+	sort.Ints(out)
+	return out
+}

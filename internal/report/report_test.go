@@ -865,3 +865,66 @@ func TestRender_RegistrationRouteShown(t *testing.T) {
 		t.Errorf("call text shown although a route renders:\n%s", out)
 	}
 }
+
+func uncoveredModel(rows ...FuncRow) Model {
+	return Model{Funcs: rows, Coverage: "coverprofile", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second}
+}
+
+func TestRender_UncoveredBlock(t *testing.T) {
+	out := Render(uncoveredModel(FuncRow{
+		Level: risk.Yellow, Display: "trade.settledFromBalance", Kind: "body", CoverText: "72 % (16/22)",
+		File: "internal/trade/monitor.go", Uncovered: []int{412, 413, 414, 415, 416, 417, 430},
+	}))
+	want := "<details><summary>Uncovered added lines (1 functions)</summary>\n\n" +
+		"- `trade.settledFromBalance` — `internal/trade/monitor.go:412-417, 430`\n" +
+		"</details>\n\n"
+	if !strings.Contains(out, want) {
+		t.Fatalf("missing block:\n%s", out)
+	}
+	if strings.Index(out, "| Risk |") > strings.Index(out, "Uncovered added lines") {
+		t.Error("block must follow the table")
+	}
+}
+
+func TestRender_UncoveredCaps(t *testing.T) {
+	var six []int
+	for i := 0; i < 6; i++ {
+		six = append(six, 10*i+1, 10*i+2) // 6 ranges of two lines
+	}
+	rows := []FuncRow{{Level: risk.Red, Display: "p.A00", Kind: "body", CoverText: "0 % (0/12)", File: "p/a.go", Uncovered: six}}
+	for i := 1; i < 16; i++ {
+		rows = append(rows, FuncRow{Level: risk.Red, Display: fmt.Sprintf("p.A%02d", i), Kind: "body", CoverText: "0 % (0/1)", File: "p/a.go", Uncovered: []int{i}})
+	}
+	out := Render(uncoveredModel(rows...))
+	if !strings.Contains(out, "(16 functions)") {
+		t.Errorf("want 16 functions in summary:\n%s", out)
+	}
+	if !strings.Contains(out, "`p/a.go:1-2, 11-12, 21-22, 31-32, 41-42 +1 more`") {
+		t.Errorf("range cap missing:\n%s", out)
+	}
+	if n := strings.Count(out, "\n- `p.A"); n != 15 {
+		t.Errorf("listed functions = %d, want 15", n)
+	}
+	if !strings.Contains(out, "\n- … and 1 more\n") {
+		t.Errorf("function cap missing:\n%s", out)
+	}
+}
+
+func TestRender_UncoveredOnlyRedYellow(t *testing.T) {
+	out := Render(uncoveredModel(FuncRow{
+		Level: risk.Green, Display: "p.G", Kind: "body", CoverText: "50 % (1/2)", File: "p/g.go", Uncovered: []int{3},
+	}))
+	if strings.Contains(out, "Uncovered added lines") {
+		t.Errorf("green row must not be listed:\n%s", out)
+	}
+}
+
+func TestRender_UncoveredStaticModeNone(t *testing.T) {
+	m := uncoveredModel(FuncRow{
+		Level: risk.Red, Display: "p.R", Kind: "body", CoverText: "n/a", File: "p/r.go", Uncovered: []int{3},
+	})
+	m.Coverage = "static"
+	if out := Render(m); strings.Contains(out, "Uncovered added lines") {
+		t.Errorf("static mode must not list:\n%s", out)
+	}
+}

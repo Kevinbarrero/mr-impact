@@ -10,6 +10,14 @@
 | 🟡 | `grade.Unused` | new | 0 | api `grade.Unused` | 0 % (0/2) |
 | 🟢 | `grade.Letter` | body | 2 | api `grade.Card`, api `grade.Letter` +1 | 100 % (3/3) |
 
+<details><summary>Uncovered added lines (4 functions)</summary>
+
+- `grade.Report` — `grade/grade.go:16-17`
+- `grade.Bonus` — `grade/grade.go:24`
+- `grade.Card` — `grade/grade.go:28-30`
+- `grade.Unused` — `grade/grade.go:33-34`
+</details>
+
 🧪 Tests touched in this MR: `grade/grade_test.go`
 
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.

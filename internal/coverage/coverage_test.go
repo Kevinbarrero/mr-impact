@@ -3,6 +3,7 @@ package coverage
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,5 +144,46 @@ func TestLinesNilAndUnknown(t *testing.T) {
 	q, _ := mustLoad(t, []string{f}, info(100))
 	if c, tot := q.Lines("other.go", []int{11}); c != 0 || tot != 0 {
 		t.Fatal("unknown file")
+	}
+}
+
+func TestUncovered(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "c.out")
+	writeProfile(t, f, blk("a/a.go", 10, 12, 1), blk("a/a.go", 13, 15, 0), blk("a/a.go", 20, 22, 0))
+	p, _ := mustLoad(t, []string{f}, info(100))
+	got := p.Uncovered("a/a.go", []int{11, 14, 15, 21})
+	if !reflect.DeepEqual(got, []int{14, 15, 21}) {
+		t.Fatalf("got %v, want [14 15 21]", got)
+	}
+}
+
+func TestUncovered_IgnoresLinesOutsideBlocks(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "c.out")
+	writeProfile(t, f, blk("a/a.go", 13, 15, 0))
+	p, _ := mustLoad(t, []string{f}, info(100))
+	if got := p.Uncovered("a/a.go", []int{5, 14, 40}); !reflect.DeepEqual(got, []int{14}) {
+		t.Fatalf("got %v, want [14]", got)
+	}
+}
+
+func TestUncovered_CoveredByOverlappingBlock(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "c.out")
+	writeProfile(t, f, blk("a/a.go", 10, 20, 0), blk("a/a.go", 12, 14, 1))
+	p, _ := mustLoad(t, []string{f}, info(100))
+	if got := p.Uncovered("a/a.go", []int{11, 13}); !reflect.DeepEqual(got, []int{11}) {
+		t.Fatalf("got %v, want [11]", got)
+	}
+}
+
+func TestUncovered_NilProfile(t *testing.T) {
+	var p *Profile
+	if got := p.Uncovered("a/a.go", []int{1}); got != nil {
+		t.Fatalf("got %v, want nil", got)
+	}
+	f := filepath.Join(t.TempDir(), "c.out")
+	writeProfile(t, f, blk("a/a.go", 10, 12, 0))
+	q, _ := mustLoad(t, []string{f}, info(100))
+	if got := q.Uncovered("zzz.go", []int{11}); got != nil {
+		t.Fatalf("unknown file: got %v, want nil", got)
 	}
 }

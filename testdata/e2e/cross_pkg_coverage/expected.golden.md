@@ -8,6 +8,11 @@
 |---|---|---|---|---|---|
 | 🟡 | `a.F` | body | 1 | api `a.F`, main | 0 % in profile · reached by tests in b |
 
+<details><summary>Uncovered added lines (1 functions)</summary>
+
+- `a.F` — `a/a.go:7-9`
+</details>
+
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
 
 ```mermaid

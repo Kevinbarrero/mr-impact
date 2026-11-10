@@ -27,6 +27,9 @@ const (
 	maxUnusedList  = 15
 	maxInlineList  = 5 // longer lists are counted and collapsed
 	maxArchList    = 15
+
+	maxUncoveredFuncs  = 15
+	maxUncoveredRanges = 5
 )
 
 // FuncRow is one changed function.
@@ -39,6 +42,9 @@ type FuncRow struct {
 	Registered []callgraph.Site  // where the function is passed as a value (handler/callback registration)
 	Entries    []callgraph.Entry // entry points reaching it (main/init/api/registration); nil in a degraded run
 	File       string            // repo-relative; shown only in a group's members list
+	// Uncovered: the added lines the coverprofile marks as statements with
+	// count 0, ascending; filled only in coverprofile mode.
+	Uncovered []int
 	// Members: the new functions folded into this row (only new code calls
 	// them), sorted by Display; non-nil only on a group row.
 	Members []FuncRow
@@ -189,6 +195,9 @@ func Render(m Model) string {
 	// caller list to show; only the context lines and limits remain.
 	if len(funcs) > 0 {
 		writeTable(&b, funcs)
+		if m.Coverage == "coverprofile" {
+			writeUncovered(&b, funcs[:min(maxTableRows, len(funcs))])
+		}
 	}
 
 	writeDeleted(&b, m.Deleted, m.DeletedFiles)
@@ -324,6 +333,53 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 	}
 	b.WriteString("\n")
 	writeMembers(b, funcs[:min(maxTableRows, len(funcs))])
+}
+
+// writeUncovered lists, per red or yellow row in table order, the added lines
+// no test covers. funcs are the rows the table shows.
+func writeUncovered(b *strings.Builder, funcs []FuncRow) {
+	var rows []FuncRow
+	for _, f := range funcs {
+		if f.Level != risk.Green && len(f.Uncovered) > 0 {
+			rows = append(rows, f)
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "<details><summary>Uncovered added lines (%d functions)</summary>\n\n", len(rows))
+	for i, f := range rows {
+		if i == maxUncoveredFuncs {
+			fmt.Fprintf(b, "- … and %d more\n", len(rows)-i)
+			break
+		}
+		fmt.Fprintf(b, "- `%s` — `%s:%s`\n", f.Display, f.File, lineRanges(f.Uncovered))
+	}
+	b.WriteString("</details>\n\n")
+}
+
+// lineRanges merges consecutive ascending lines into "a-b, c", at most
+// maxUncoveredRanges ranges, then " +N more".
+func lineRanges(lines []int) string {
+	var rs []string
+	for i := 0; i < len(lines); {
+		j := i
+		for j+1 < len(lines) && lines[j+1] == lines[j]+1 {
+			j++
+		}
+		if j > i {
+			rs = append(rs, fmt.Sprintf("%d-%d", lines[i], lines[j]))
+		} else {
+			rs = append(rs, fmt.Sprint(lines[i]))
+		}
+		i = j + 1
+	}
+	more := ""
+	if len(rs) > maxUncoveredRanges {
+		more = fmt.Sprintf(" +%d more", len(rs)-maxUncoveredRanges)
+		rs = rs[:maxUncoveredRanges]
+	}
+	return strings.Join(rs, ", ") + more
 }
 
 // writeMembers lists, per group row in table order, the new functions folded
