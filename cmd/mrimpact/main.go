@@ -11,17 +11,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
-	"gitlab.com/wh1t3hat/mrimpact/internal/gitlab"
-	"gitlab.com/wh1t3hat/mrimpact/internal/pipeline"
-	"gitlab.com/wh1t3hat/mrimpact/internal/report"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
-	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
+	"github.com/Kevinbarrero/mr-impact/internal/arch"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/gitlab"
+	"github.com/Kevinbarrero/mr-impact/internal/pipeline"
+	"github.com/Kevinbarrero/mr-impact/internal/report"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/sensitive"
 )
 
 // newClient builds the GitLab client; tests replace it to inject a no-op Sleep.
@@ -33,6 +34,21 @@ type listFlag []string
 
 func (l *listFlag) String() string     { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+
+// version is set at release time with -X main.version=vX.Y.Z.
+var version = "dev"
+
+// resolveVersion returns v unless it is "dev", in which case a module version
+// recorded by "go install" is used when there is one.
+func resolveVersion(v string, info func() (*debug.BuildInfo, bool)) string {
+	if v != "dev" {
+		return v
+	}
+	if bi, ok := info(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return v
+}
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
@@ -54,6 +70,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	failOn := fs.String("fail-on", "", `comma list of gates that exit 1: "red" (a red function exists), "arch" (a new violation of the declared architecture)`)
 	strict := fs.Bool("strict", false, "exit 2 on internal or post failure")
 	skipEmpty := fs.Bool("skip-empty", false, "do not post when there are no Go changes")
+	showVersion := fs.Bool("version", false, "print the version and exit")
 	noPost := fs.Bool("no-post", false, "shadow mode: never post to GitLab")
 	out := fs.String("out", "mrimpact-report.md", "write the note to this file")
 	configPath := fs.String("config", "", "config file (default: .mrimpact.yml in --dir, optional)")
@@ -62,6 +79,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 			return 0
 		}
 		return 2
+	}
+	if *showVersion {
+		fmt.Fprintf(stdout, "mrimpact %s\n", resolveVersion(version, debug.ReadBuildInfo))
+		return 0
 	}
 	usage := func(format string, a ...any) int {
 		warnf(format, a...)
@@ -110,7 +131,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	}
 
 	cfg := pipeline.Config{
-		Dir: *dir, Base: *base, Head: *head, Depth: *depth,
+		Version: resolveVersion(version, debug.ReadBuildInfo),
+		Dir:     *dir, Base: *base, Head: *head, Depth: *depth,
 		CoverProfiles: profiles, Timeout: *timeout,
 		Sensitive: &table, Critical: fileCfg.Critical,
 		File: &fileCfg, FileName: ".mrimpact.yml", FileRel: ".mrimpact.yml",

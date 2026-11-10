@@ -19,8 +19,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/load"
-	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
+	"github.com/Kevinbarrero/mr-impact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
 type Caller struct {

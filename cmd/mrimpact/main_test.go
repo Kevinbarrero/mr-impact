@@ -7,13 +7,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/gitlab"
-	"gitlab.com/wh1t3hat/mrimpact/internal/testutil"
+	"github.com/Kevinbarrero/mr-impact/internal/gitlab"
+	"github.com/Kevinbarrero/mr-impact/internal/testutil"
 )
 
 func init() {
@@ -379,5 +380,36 @@ func TestMain_FailOnRedUnchanged(t *testing.T) {
 	}
 	if code, _, _ := exec(t, env{}, "--dir", repo, "--base", base, "--fail-on", "arch", "--out", out); code != 0 {
 		t.Errorf("arch only on red fixture: code=%d", code)
+	}
+}
+
+func TestResolveVersion(t *testing.T) {
+	info := func(v string, ok bool) func() (*debug.BuildInfo, bool) {
+		return func() (*debug.BuildInfo, bool) {
+			return &debug.BuildInfo{Main: debug.Module{Version: v}}, ok
+		}
+	}
+	for _, tc := range []struct {
+		name, v string
+		info    func() (*debug.BuildInfo, bool)
+		want    string
+	}{
+		{"injected", "v0.3.0", info("v9", true), "v0.3.0"},
+		{"build info", "dev", info("v0.3.1", true), "v0.3.1"},
+		{"devel", "dev", info("(devel)", true), "dev"},
+		{"empty", "dev", info("", true), "dev"},
+		{"unavailable", "dev", info("v0.3.1", false), "dev"},
+	} {
+		if got := resolveVersion(tc.v, tc.info); got != tc.want {
+			t.Errorf("%s: resolveVersion = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestMain_Version(t *testing.T) {
+	code, stdout, stderr := exec(t, env{}, "--version")
+	want := "mrimpact " + resolveVersion(version, debug.ReadBuildInfo) + "\n"
+	if code != 0 || stdout != want || stderr != "" {
+		t.Fatalf("code=%d stdout=%q stderr=%q, want %q", code, stdout, stderr, want)
 	}
 }

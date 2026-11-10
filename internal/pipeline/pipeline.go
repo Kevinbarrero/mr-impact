@@ -19,26 +19,24 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
-	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
-	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
-	"gitlab.com/wh1t3hat/mrimpact/internal/coverage"
-	"gitlab.com/wh1t3hat/mrimpact/internal/diff"
-	"gitlab.com/wh1t3hat/mrimpact/internal/load"
-	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
-	"gitlab.com/wh1t3hat/mrimpact/internal/report"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
-	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
-	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
+	"github.com/Kevinbarrero/mr-impact/internal/arch"
+	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/configfields"
+	"github.com/Kevinbarrero/mr-impact/internal/coverage"
+	"github.com/Kevinbarrero/mr-impact/internal/diff"
+	"github.com/Kevinbarrero/mr-impact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/registrations"
+	"github.com/Kevinbarrero/mr-impact/internal/report"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/sensitive"
+	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
-
-// Version is shown in the report footer as "mrimpact v<Version>".
-const Version = "0.2.0"
 
 const defaultDepth = 2
 
 type Config struct {
+	Version       string           // shown in the report footer as "mrimpact <Version>"
 	Dir           string           // repo root, checked out at Head; the module root
 	Base, Head    string           // Head default "HEAD"
 	Depth         int              // caller depth; <= 0 means 2
@@ -79,7 +77,7 @@ func Run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		m = report.Model{Failure: failureText(err, le.err != nil)}
 	}
-	m.Version = Version
+	m.Version = cfg.Version
 	m.Duration = now().Sub(start)
 	return m, err
 }

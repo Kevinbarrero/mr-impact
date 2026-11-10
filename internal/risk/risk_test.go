@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
+	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
 func TestAssess(t *testing.T) {

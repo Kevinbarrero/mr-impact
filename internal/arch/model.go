@@ -5,7 +5,7 @@ package arch
 import (
 	"strings"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/sensitive"
+	"github.com/Kevinbarrero/mr-impact/internal/sensitive"
 )
 
 // Edge is a module-internal import between package paths; File is repo-relative.

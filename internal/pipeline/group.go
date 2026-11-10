@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/report"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/report"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
 )
 
 // ratedFunc is one rated, non-deleted changed function as the pipeline built it.

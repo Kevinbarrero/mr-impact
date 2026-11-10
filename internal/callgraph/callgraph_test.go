@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/load"
+	"github.com/Kevinbarrero/mr-impact/internal/load"
 )
 
 const fixture = "testdata/iface"

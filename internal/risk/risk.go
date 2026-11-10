@@ -3,7 +3,7 @@
 package risk
 
 import (
-	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
+	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
 // Level is a risk rating; higher values are riskier.

@@ -4,10 +4,10 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
-	"gitlab.com/wh1t3hat/mrimpact/internal/report"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
-	"gitlab.com/wh1t3hat/mrimpact/internal/symbols"
+	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
+	"github.com/Kevinbarrero/mr-impact/internal/report"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
 // rf builds a new function of package m/p with a profile and cov/total

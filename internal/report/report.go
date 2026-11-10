@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/wh1t3hat/mrimpact/internal/arch"
-	"gitlab.com/wh1t3hat/mrimpact/internal/callgraph"
-	"gitlab.com/wh1t3hat/mrimpact/internal/config"
-	"gitlab.com/wh1t3hat/mrimpact/internal/configfields"
-	"gitlab.com/wh1t3hat/mrimpact/internal/registrations"
-	"gitlab.com/wh1t3hat/mrimpact/internal/risk"
+	"github.com/Kevinbarrero/mr-impact/internal/arch"
+	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
+	"github.com/Kevinbarrero/mr-impact/internal/config"
+	"github.com/Kevinbarrero/mr-impact/internal/configfields"
+	"github.com/Kevinbarrero/mr-impact/internal/registrations"
+	"github.com/Kevinbarrero/mr-impact/internal/risk"
 )
 
 // Marker identifies the note so it can be found and updated.
@@ -802,7 +802,7 @@ func count(n int, noun string) string {
 }
 
 func writeFooter(b *strings.Builder, m Model) {
-	fmt.Fprintf(b, "<sub>Rules: %s · mrimpact v%s · %.1f s</sub>\n", risk.Legend, m.Version, m.Duration.Seconds())
+	fmt.Fprintf(b, "<sub>Rules: %s · mrimpact %s · %.1f s</sub>\n", risk.Legend, m.Version, m.Duration.Seconds())
 }
 
 func sortedFuncs(in []FuncRow) []FuncRow {

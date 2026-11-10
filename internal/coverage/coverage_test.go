@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const mod = "gitlab.com/wh1t3hat/mrimpact"
+const mod = "github.com/Kevinbarrero/mr-impact"
 
 // writeProfile writes a set-mode profile with the given block lines.
 func writeProfile(t *testing.T, path string, blocks ...string) {
