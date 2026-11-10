@@ -142,3 +142,40 @@ func TestLoad_CriticalGlobsCleaned(t *testing.T) {
 		t.Fatalf("got %q, %v; want %q", cfg.Critical, err, want)
 	}
 }
+
+func TestParse_LayerOrderPreserved(t *testing.T) {
+	c, err := Parse("t", strings.NewReader("architecture:\n  layers:\n    zeta: [a/...]\n    alpha: [./a/b/]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := c.Architecture.Layers
+	if !c.Architecture.Set || len(l) != 2 || l[0].Name != "zeta" || l[1].Name != "alpha" || l[1].Globs[0] != "a/b" {
+		t.Errorf("%+v", c.Architecture)
+	}
+}
+
+func TestParse_ArchitectureErrors(t *testing.T) {
+	cases := map[string]string{
+		"architecture:\n  preset: nope\n":                                    "nope",
+		"architecture: {}\n":                                                 "preset or layers",
+		"architecture:\n  layers:\n    a: [x]\n  allow: [\"a b\"]\n":         "a b",
+		"architecture:\n  layers:\n    a: [x]\n  allow: [\"a -> b -> c\"]\n": "a -> b -> c",
+		"architecture:\n  preset: clean\n  stages: [s1]\n":                   "stages",
+		"architecture:\n  preset: pipeline\n":                                "stages",
+		"architecture:\n  preset: pipeline\n  stages: [a, a]\n":              "\"a\"",
+		"architecture:\n  preset: clean\n  modules_root: internal\n":         "modules_root",
+		"architecture:\n  layers:\n    a: [x]\n    a: [y]\n":                 "duplicate layer \"a\"",
+		"architecture:\n  layers:\n    a: [\"internal/[x\"]\n":               "internal/[x",
+		"architecture:\n  layers:\n    a: x\n":                               "\"a\"",
+		"architecture:\n  layers: [a]\n":                                     "mapping",
+		"architecture:\n  preset: modular\n  layers:\n    a: [x]\n":          "modular",
+		"architecture:\n  preset: modular\n  isolated: [a]\n":                "modular",
+		"architecture:\n  preset: clean\n  bogus: 1\n":                       "bogus",
+	}
+	for y, want := range cases {
+		_, err := Parse("t", strings.NewReader(y))
+		if !errors.Is(err, ErrConfig) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v (want %q)", y, err, want)
+		}
+	}
+}
