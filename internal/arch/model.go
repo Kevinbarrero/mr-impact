@@ -64,37 +64,47 @@ func (m Model) Classify(module, pkgPath string) (layer string, ok bool) {
 // the shallowest module-relative segment equal to one of its Dirs. In Modular
 // models the layer is the module name under ModulesRoot.
 func (m Model) ClassifyNamed(module, pkgPath, pkgName string) (string, bool) {
+	l, _, ok := m.classifyUnit(module, pkgPath, pkgName)
+	return l, ok
+}
+
+// classifyUnit is ClassifyNamed plus the isolation unit: for a package
+// classified by a directory name, its module-relative path up to the matched
+// segment plus one more segment when present. Empty for every other
+// classification (globs, entry, modular).
+func (m Model) classifyUnit(module, pkgPath, pkgName string) (layer, unit string, ok bool) {
 	for _, l := range m.Layers {
 		if _, ok := sensitive.Critical(pkgPath, module, l.Globs); ok {
-			return l.Name, true
+			return l.Name, "", true
 		}
 	}
 	segs := segments(module, pkgPath)
 	if pkgName == "main" {
-		return EntryLayer, true
+		return EntryLayer, "", true
 	}
 	for _, s := range segs {
 		if s == "cmd" {
-			return EntryLayer, true
+			return EntryLayer, "", true
 		}
 	}
 	if m.Kind == Modular {
 		rest, ok := strings.CutPrefix(strings.Join(segs, "/"), m.ModulesRoot+"/")
 		if !ok || rest == "" {
-			return "", false
+			return "", "", false
 		}
-		return strings.SplitN(rest, "/", 2)[0], true
+		return strings.SplitN(rest, "/", 2)[0], "", true
 	}
-	for _, s := range segs {
+	for i, s := range segs {
 		for _, l := range m.Layers {
 			for _, d := range l.Dirs {
 				if d == s {
-					return l.Name, true
+					end := min(i+2, len(segs))
+					return l.Name, strings.Join(segs[:end], "/"), true
 				}
 			}
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 func segments(module, pkgPath string) []string {

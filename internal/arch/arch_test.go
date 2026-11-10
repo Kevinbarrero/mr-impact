@@ -139,3 +139,46 @@ func TestConformance(t *testing.T) {
 		t.Fatal("want !ok")
 	}
 }
+
+func TestJudge_IsolatedSameAdapterDir(t *testing.T) {
+	hex, _ := Preset("hexagonal")
+	g := Graph{Module: "m", Edges: []Edge{
+		e("m/internal/controller/http/ratecorrelation", "m/internal/controller/http/common"),
+		e("m/internal/adapters/pg", "m/internal/adapters/http"),
+		e("m/internal/adapters/pg/a", "m/internal/adapters/pgx"),
+		e("m/internal/adapters/pg/a", "m/internal/adapters/pg/b"),
+	}}
+	j, v := hex.Judge(g)
+	if j != 4 || len(v) != 2 {
+		t.Fatalf("%d %+v", j, v)
+	}
+	for _, x := range v {
+		if !x.Isolated {
+			t.Errorf("not flagged isolated: %+v", x)
+		}
+	}
+	if v[0].Edge.To != "m/internal/adapters/http" || v[1].Edge.To != "m/internal/adapters/pgx" {
+		t.Errorf("%+v", v)
+	}
+}
+
+func TestJudge_IsolatedGlobKeepsAncestorRule(t *testing.T) {
+	m := Model{Name: "custom", Layers: []Layer{
+		{Name: "ad", Globs: []string{"svc/..."}, Isolated: true},
+	}}
+	g := Graph{Module: "m", Edges: []Edge{
+		e("m/svc/a", "m/svc/b"),
+		e("m/svc/a", "m/svc/a/x"),
+		e("m/svc/a/x", "m/svc/a/y"),
+	}}
+	j, v := m.Judge(g)
+	if j != 3 || len(v) != 2 || !v[0].Isolated || !v[1].Isolated {
+		t.Fatalf("%d %+v", j, v)
+	}
+}
+
+func TestJudge_PipelineSubUnit(t *testing.T) {
+	m := NewPipeline([]string{"ingest", "transform", "load"})
+	edgeOK(t, m, "m/transform/a/x", "m/transform/a/y", true)
+	edgeOK(t, m, "m/transform/a", "m/transform/b", false)
+}

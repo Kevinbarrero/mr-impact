@@ -47,7 +47,7 @@ A layer has a name, a set of directory names, optional globs, and an `isolated` 
 
 - A preset or config defines, for each layer, the layers it **may import**.
 - A judged edge (both ends classified) **conforms** when its source and target are in the same layer, or the source may import the target's layer.
-- **Isolated layer:** two different packages of it may import each other only when one path is a prefix (ancestor directory) of the other. Sibling packages, e.g. two adapters, may not.
+- **Isolated layer:** two different packages of it may import each other only when they share an isolation unit, or when one path is an ancestor directory of the other. The unit of a package classified by directory name is its module-relative path up to and including the matched segment plus one more segment if present (`internal/controller/http/x` → `internal/controller/http`; `internal/adapters/pg/sub` → `internal/adapters/pg`). Glob-classified packages have no unit (ancestor rule only). Two adapters (different units) may not import each other. *(Amended after validation on a real repository: the original sibling-package rule flagged controllers importing their shared `common` package.)*
 
 **Conformance** = conforming judged edges ÷ all judged edges, as a percentage with one decimal, computed at base and at head. When no edge is judged, it is "n/a".
 
