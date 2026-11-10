@@ -350,14 +350,16 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	// default, or no case at all.
 	m.RemovedCases = stillDeclared(prog, syms.RemovedCases)
 
-	// 10. Registrations removed and added.
+	// 10. Registrations removed, rewired, changed and added.
 	b := <-baseCh
 	baseDone = true
 	if b.err != nil {
 		m.Warnings = append(m.Warnings, "Registrations not compared: the base revision could not be loaded.")
 	} else {
 		head := registrations.Find(prog.Packages, prog.ModulePath, prog.Rel)
-		m.RegRewired, m.RegRemoved, m.RegAdded = registrations.Pair(registrations.Diff(b.regs, head))
+		rewired, gone, fresh := registrations.Pair(registrations.Diff(b.regs, head))
+		m.RegRewired = rewired
+		m.RegChanged, m.RegRemoved, m.RegAdded = registrations.PairChanged(gone, fresh)
 	}
 
 	// Architecture: the head import graph judged against the model, and

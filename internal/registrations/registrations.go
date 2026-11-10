@@ -6,22 +6,37 @@ package registrations
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/Kevinbarrero/mr-impact/internal/route"
 )
 
 // Registration is one call that takes a module function as an argument.
 type Registration struct {
 	Callee  string // the call's function, e.g. "SubscribeAsync", "GET"
 	Call    string // the call as written, the handler as "…", shortened
+	Route   string // the route the call registers ("GET /trade/:id"), "" when none renders
 	Handler string // display name of the function passed, e.g. "api.(*Server).handleUsers"
 	File    string // repo-relative
 	Line    int
 	key     string // Callee + args, the handler by name: what Diff compares
 	slot    string // Callee + args, the handler as "…": the same call with another handler is a rewiring
+	// identity is Callee, the string-literal args and the handler: what
+	// PairChanged pairs on.
+	identity string
+	attrs    []string // the other args as written, in order
+}
+
+// Changed is a registration whose callee, string-literal args and handler
+// stayed and whose other args (attributes, e.g. middleware) changed.
+type Changed struct {
+	From, To       Registration // base and head registration
+	Added, Removed []string     // attributes, multiset difference, in head / base order
 }
 
 // Rewired is a registration whose call stayed and whose handler changed.
@@ -47,26 +62,47 @@ func Find(pkgs []*packages.Package, modulePath string, rel func(string) (string,
 			if !ok || strings.HasSuffix(file, "_test.go") || ast.IsGenerated(f) {
 				continue
 			}
-			ast.Inspect(f, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok || isConversion(pkg.TypesInfo, call) {
+			visit := func(root, enclosing ast.Node) {
+				ast.Inspect(root, func(n ast.Node) bool {
+					call, ok := n.(*ast.CallExpr)
+					if !ok || isConversion(pkg.TypesInfo, call) {
+						return true
+					}
+					for i, arg := range call.Args {
+						fn := handler(pkg.TypesInfo, arg)
+						if fn == nil || fn.Pkg() == nil || !inModule(fn.Pkg().Path(), modulePath) {
+							continue
+						}
+						at := pkg.Fset.Position(call.Lparen)
+						dedup := file + ":" + at.String() + ":" + fn.FullName()
+						if seen[dedup] {
+							continue
+						}
+						seen[dedup] = true
+						out = append(out, newRegistration(call, i, fn, file, at.Line, enclosing))
+					}
 					return true
+				})
+			}
+			// Each call is rendered against its enclosing function: a
+			// declaration, or a func literal at package level.
+			for _, d := range f.Decls {
+				if fd, ok := d.(*ast.FuncDecl); ok {
+					visit(fd, fd)
+					continue
 				}
-				for i, arg := range call.Args {
-					fn := handler(pkg.TypesInfo, arg)
-					if fn == nil || fn.Pkg() == nil || !inModule(fn.Pkg().Path(), modulePath) {
-						continue
+				ast.Inspect(d, func(n ast.Node) bool {
+					if lit, ok := n.(*ast.FuncLit); ok {
+						visit(lit, lit)
+						return false
 					}
-					at := pkg.Fset.Position(call.Lparen)
-					dedup := file + ":" + at.String() + ":" + fn.FullName()
-					if seen[dedup] {
-						continue
+					if _, ok := n.(*ast.CallExpr); ok {
+						visit(n, d)
+						return false
 					}
-					seen[dedup] = true
-					out = append(out, newRegistration(call, i, fn, file, at.Line))
-				}
-				return true
-			})
+					return true
+				})
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -81,8 +117,12 @@ func Find(pkgs []*packages.Package, modulePath string, rel func(string) (string,
 	return out
 }
 
-func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, line int) Registration {
+func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, line int, enclosing ast.Node) Registration {
 	r := Registration{Callee: calleeName(call.Fun), Handler: Display(fn), File: file, Line: line}
+	if rt, ok := route.Render(call, enclosing); ok {
+		r.Route = rt
+	}
+	r.identity = identityOf(r.Callee, route.Literals(call), r.Handler)
 	shown := make([]string, len(call.Args))
 	keyed := make([]string, len(call.Args))
 	for i, a := range call.Args {
@@ -90,6 +130,8 @@ func newRegistration(call *ast.CallExpr, arg int, fn *types.Func, file string, l
 		keyed[i] = shown[i]
 		if i == arg {
 			shown[i], keyed[i] = "…", r.Handler
+		} else if !isStringLit(a) {
+			r.attrs = append(r.attrs, shown[i])
 		}
 	}
 	r.Call = r.Callee + "(" + strings.Join(shown, ", ") + ")"
@@ -156,6 +198,71 @@ func Pair(removed, added []Registration) (rewired []Rewired, gone, fresh []Regis
 		}
 	}
 	return rewired, gone, fresh
+}
+
+// PairChanged moves a removed and an added registration of equal identity
+// (callee, string-literal args, handler) into changed, with the attributes
+// each side has that the other lacks. It pairs only when exactly one
+// candidate exists on each side, and not when the attributes differ only in
+// order; everything else stays in gone and fresh, in order.
+func PairChanged(removed, added []Registration) (changed []Changed, gone, fresh []Registration) {
+	nRemoved, nAdded := map[string]int{}, map[string]int{}
+	for _, r := range removed {
+		nRemoved[r.identity]++
+	}
+	for _, a := range added {
+		nAdded[a.identity]++
+	}
+	headOf := map[string]int{}
+	for i, a := range added {
+		headOf[a.identity] = i
+	}
+	used := map[int]bool{}
+	for _, r := range removed {
+		if nRemoved[r.identity] == 1 && nAdded[r.identity] == 1 {
+			i := headOf[r.identity]
+			plus, minus := without(added[i].attrs, r.attrs), without(r.attrs, added[i].attrs)
+			if len(plus) > 0 || len(minus) > 0 {
+				used[i] = true
+				changed = append(changed, Changed{From: r, To: added[i], Added: plus, Removed: minus})
+				continue
+			}
+		}
+		gone = append(gone, r)
+	}
+	for i, a := range added {
+		if !used[i] {
+			fresh = append(fresh, a)
+		}
+	}
+	return changed, gone, fresh
+}
+
+// without returns the elements of xs not matched one-to-one in ys, in xs
+// order (multiset difference).
+func without(xs, ys []string) []string {
+	left := map[string]int{}
+	for _, y := range ys {
+		left[y]++
+	}
+	var out []string
+	for _, x := range xs {
+		if left[x] > 0 {
+			left[x]--
+			continue
+		}
+		out = append(out, x)
+	}
+	return out
+}
+
+func identityOf(callee string, literals []string, handler string) string {
+	return callee + "\x00" + strings.Join(literals, "\x00") + "\x00" + handler
+}
+
+func isStringLit(e ast.Expr) bool {
+	b, ok := e.(*ast.BasicLit)
+	return ok && b.Kind == token.STRING
 }
 
 // handler returns the function arg denotes when it is a function or method

@@ -102,10 +102,12 @@ type Model struct {
 	// more: deployments still set them for nothing.
 	UnusedConfig []configfields.Field
 	// Registrations removed with no replacement (base positions), added
-	// (head positions) and rewired to another handler: routes,
-	// subscriptions, hooks the MR unwires, wires or swaps.
+	// (head positions), rewired to another handler, and changed (same call
+	// and handler, other attributes such as middleware): routes,
+	// subscriptions, hooks the MR unwires, wires, swaps or rewraps.
 	RegRemoved, RegAdded []registrations.Registration
 	RegRewired           []registrations.Rewired
+	RegChanged           []registrations.Changed // same call and handler, other attributes (head positions)
 	Deleted              []DeletedFunc
 	DeletedFiles         []string
 	Decls                []Decl
@@ -178,6 +180,7 @@ func Render(m Model) string {
 	writeUnusedList(&b, "🧩 **Generated code no longer used** — remove it from its source (.sql, .proto, interface) and regenerate", m.UnusedGenerated)
 	writeRegistrations(&b, "🔌 **Registrations removed, no replacement** — these calls no longer get a handler; check each is intended", "base", m.RegRemoved)
 	writeRewired(&b, m.RegRewired)
+	writeChanged(&b, m.RegChanged)
 	writeRegistrations(&b, "🔌 **Registrations added**", "head", m.RegAdded)
 	writeSensitive(&b, m.Sensitive)
 	writeArch(&b, m.Arch)
@@ -489,7 +492,7 @@ func writeRegistrations(b *strings.Builder, title, side string, rs []registratio
 		return
 	}
 	line := func(r registrations.Registration) string {
-		return fmt.Sprintf("- `%s` → `%s` — `%s:%d`\n", strings.ReplaceAll(r.Call, "`", "'"), r.Handler, r.File, r.Line)
+		return fmt.Sprintf("- `%s` → `%s` — `%s:%d`\n", regText(r), r.Handler, r.File, r.Line)
 	}
 	fmt.Fprintf(b, "%s (%d, positions in %s):\n\n", title, len(rs), side)
 	if len(rs) <= maxUnusedList {
@@ -694,9 +697,43 @@ func writeRewired(b *strings.Builder, rs []registrations.Rewired) {
 			fmt.Fprintf(b, "- … and %d more\n", len(rs)-maxUnusedList)
 			break
 		}
-		fmt.Fprintf(b, "- `%s`: `%s` → `%s` — `%s:%d`\n", strings.ReplaceAll(r.To.Call, "`", "'"), r.From.Handler, r.To.Handler, r.To.File, r.To.Line)
+		fmt.Fprintf(b, "- `%s`: `%s` → `%s` — `%s:%d`\n", regText(r.To), r.From.Handler, r.To.Handler, r.To.File, r.To.Line)
 	}
 	b.WriteString("\n")
+}
+
+// writeChanged lists registrations that kept their call and handler and
+// gained or lost other arguments, at their head positions.
+func writeChanged(b *strings.Builder, cs []registrations.Changed) {
+	if len(cs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "🔌 **Registrations changed** (%d, positions in head):\n\n", len(cs))
+	for i, c := range cs {
+		if i == maxUnusedList {
+			fmt.Fprintf(b, "- … and %d more\n", len(cs)-maxUnusedList)
+			break
+		}
+		var attrs []string
+		for _, a := range c.Added {
+			attrs = append(attrs, "+ `"+strings.ReplaceAll(a, "`", "'")+"`")
+		}
+		for _, a := range c.Removed {
+			attrs = append(attrs, "− `"+strings.ReplaceAll(a, "`", "'")+"`")
+		}
+		fmt.Fprintf(b, "- `%s` → `%s`: %s — `%s:%d`\n", regText(c.To), c.To.Handler, strings.Join(attrs, ", "), c.To.File, c.To.Line)
+	}
+	b.WriteString("\n")
+}
+
+// regText is what a registration block shows: the route when one renders,
+// else the call text.
+func regText(r registrations.Registration) string {
+	t := r.Route
+	if t == "" {
+		t = r.Call
+	}
+	return strings.ReplaceAll(t, "`", "'")
 }
 
 func writeDeleted(b *strings.Builder, ds []DeletedFunc, files []string) {

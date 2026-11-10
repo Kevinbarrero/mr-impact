@@ -812,3 +812,56 @@ func TestFooterVersion(t *testing.T) {
 		t.Errorf("footer does not carry the version verbatim:\n%s", out)
 	}
 }
+
+func TestRender_RegistrationsChanged(t *testing.T) {
+	head := registrations.Registration{Callee: "GET", Call: `GET("/:id", c.signatureMiddleware, …)`, Route: "GET /trade/:id",
+		Handler: "trade.(*controller).getStatus", File: "internal/controller/http/trade/controller.go", Line: 37}
+	base := head
+	base.Call, base.Line = `GET("/:id", …)`, 30
+	post := registrations.Registration{Callee: "POST", Call: `POST("", c.limit, …)`, Handler: "trade.(*controller).create", File: "t/c.go", Line: 40}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0",
+		RegRewired: []registrations.Rewired{{From: registrations.Registration{Handler: "h.Old"}, To: registrations.Registration{Call: `GET("/r", …)`, Handler: "h.New", File: "h/h.go", Line: 2}}},
+		RegChanged: []registrations.Changed{
+			{From: base, To: head, Added: []string{"c.signatureMiddleware"}},
+			{From: post, To: post, Added: []string{"c.limit", "c.x"}, Removed: []string{"c.auth"}},
+			{From: post, To: post, Removed: []string{"c.auth"}},
+		},
+		RegAdded: []registrations.Registration{{Call: `GET("/x", …)`, Handler: "h.X", Callee: "GET", File: "h/h.go", Line: 3}},
+	}
+	out := Render(m)
+	want := "🔌 **Registrations changed** (3, positions in head):\n\n" +
+		"- `GET /trade/:id` → `trade.(*controller).getStatus`: + `c.signatureMiddleware` — `internal/controller/http/trade/controller.go:37`\n" +
+		"- `POST(\"\", c.limit, …)` → `trade.(*controller).create`: + `c.limit`, + `c.x`, − `c.auth` — `t/c.go:40`\n" +
+		"- `POST(\"\", c.limit, …)` → `trade.(*controller).create`: − `c.auth` — `t/c.go:40`\n\n"
+	if !strings.Contains(out, want) {
+		t.Fatalf("missing %q in\n%s", want, out)
+	}
+	rew, ch, add := strings.Index(out, "Registrations rewired"), strings.Index(out, "Registrations changed"), strings.Index(out, "Registrations added")
+	if !(rew >= 0 && rew < ch && ch < add) {
+		t.Errorf("changed block must sit between rewired and added:\n%s", out)
+	}
+	if strings.Contains(Render(Model{Coverage: "static", BaseSHA: "abcdef0"}), "Registrations changed") {
+		t.Error("empty block rendered")
+	}
+}
+
+func TestRender_RegistrationRouteShown(t *testing.T) {
+	r := registrations.Registration{Callee: "GET", Call: `GET("/:id", …)`, Route: "GET /trade/:id", Handler: "trade.(*controller).getStatus", File: "t/c.go", Line: 7}
+	m := Model{Coverage: "static", BaseSHA: "abcdef0",
+		RegRemoved: []registrations.Registration{r},
+		RegAdded:   []registrations.Registration{r},
+		RegRewired: []registrations.Rewired{{From: registrations.Registration{Handler: "h.Old"}, To: r}},
+	}
+	out := Render(m)
+	for _, want := range []string{
+		"- `GET /trade/:id` → `trade.(*controller).getStatus` — `t/c.go:7`\n",
+		"- `GET /trade/:id`: `h.Old` → `trade.(*controller).getStatus` — `t/c.go:7`\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `GET("/:id", …)`) {
+		t.Errorf("call text shown although a route renders:\n%s", out)
+	}
+}
