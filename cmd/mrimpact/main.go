@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
@@ -61,7 +60,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	fs.SetOutput(stderr)
 	var profiles listFlag
 	dir := fs.String("dir", ".", "repository root (module root), checked out at --head")
-	base := fs.String("base", env("CI_MERGE_REQUEST_DIFF_BASE_SHA"), "base revision (env CI_MERGE_REQUEST_DIFF_BASE_SHA)")
+	base := fs.String("base", "", "base revision (default: env CI_MERGE_REQUEST_DIFF_BASE_SHA, or the GitHub pull request base)")
 	head := fs.String("head", "HEAD", "head revision")
 	depth := fs.Int("depth", 2, "caller depth (>= 1)")
 	fs.Var(&profiles, "coverprofile", "coverage profile glob (repeatable)")
@@ -93,8 +92,6 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	switch {
 	case fs.NArg() > 0:
 		return usage("unexpected argument %q", fs.Arg(0))
-	case *base == "":
-		return usage("--base is required (or CI_MERGE_REQUEST_DIFF_BASE_SHA)")
 	case failErr != nil:
 		return usage("%v", failErr)
 	case *depth < 1:
@@ -103,15 +100,20 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		return usage("--timeout must be > 0")
 	}
 
-	iid, projectID, apiURL := env("CI_MERGE_REQUEST_IID"), env("CI_PROJECT_ID"), env("CI_API_V4_URL")
-	inMR := iid != "" && projectID != "" && apiURL != ""
-	mrIID := 0
-	if inMR && !*noPost {
-		n, err := strconv.Atoi(iid)
-		if err != nil || n < 1 {
-			return usage("CI_MERGE_REQUEST_IID must be a positive integer, got %q", iid)
+	ci, err := detectCI(env, os.ReadFile)
+	if err != nil {
+		return usage("%v", err)
+	}
+	if *base == "" {
+		if *base = env("CI_MERGE_REQUEST_DIFF_BASE_SHA"); *base == "" {
+			*base = ci.BaseSHA
 		}
-		mrIID = n
+	}
+	if *base == "" {
+		return usage("--base is required (or CI_MERGE_REQUEST_DIFF_BASE_SHA)")
+	}
+	if ci.IIDErr != nil && !*noPost {
+		return usage("%v", ci.IIDErr)
 	}
 
 	// Config errors stop the run before any note is written or posted.
@@ -161,14 +163,28 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	}
 	fmt.Fprint(stdout, note)
 
-	if inMR && !*noPost && !(m.NoGoChanges && *skipEmpty) {
-		// No token: keep the artifact and stdout, warn, and skip posting; this
-		// is a configuration gap, not an internal failure (spec §7).
-		if token := env("MRIMPACT_TOKEN"); token == "" {
+	if ci.Summary != "" {
+		if err := appendSummary(ci.Summary, note); err != nil {
+			warnf("cannot write job summary %s: %v", ci.Summary, err)
+		}
+	}
+
+	if (ci.Kind == "gitlab" || ci.Kind == "github") && !*noPost && !(m.NoGoChanges && *skipEmpty) {
+		// A missing token, a fork's read-only token: keep the artifact and
+		// stdout, warn, and skip posting; a configuration gap, not an internal
+		// failure (spec §7).
+		switch {
+		case ci.Fork:
+			warnf("fork pull request: the token is read-only, note written to the job summary")
+		case ci.Poster == nil && ci.Kind == "github":
+			warnf("set MRIMPACT_TOKEN (the action passes github.token; needs permissions: pull-requests: write); comment not posted")
+		case ci.Poster == nil:
 			warnf("set MRIMPACT_TOKEN (Project Access Token, api scope, Reporter role) as a masked CI/CD variable; note not posted")
-		} else if err := newClient(apiURL, token).Upsert(ctx, projectID, mrIID, report.Marker, note); err != nil {
-			warnf("posting note failed: %v", err)
-			internalFailure = true
+		default:
+			if err := ci.Poster.Upsert(ctx, note); err != nil {
+				warnf("posting note failed: %v", err)
+				internalFailure = true
+			}
 		}
 	}
 
