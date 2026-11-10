@@ -562,6 +562,8 @@ func archShown(a *arch.Result) bool {
 	switch {
 	case a == nil:
 		return false
+	case a.Inferred && a.Classified == 0:
+		return false // the inferred map recognised nothing: no hint to give
 	case a.BaseMissing:
 		return a.HeadConf != nil
 	}
@@ -623,7 +625,7 @@ func writeArch(b *strings.Builder, a *arch.Result) {
 			}
 			fmt.Fprintf(b, " — `%s:%d` imports %s", v.Edge.File, v.Edge.Line, codeSpan(rel(v.Edge.To)))
 			if i == 0 && a.Existing > 0 {
-				fmt.Fprintf(b, " (+%d violations already in base)", a.Existing)
+				fmt.Fprintf(b, " (+%s already in base)", count(a.Existing, "violation"))
 			}
 			b.WriteString("\n")
 		}
@@ -631,12 +633,25 @@ func writeArch(b *strings.Builder, a *arch.Result) {
 	}
 
 	if len(a.Coupling) > 0 {
-		fmt.Fprintf(b, "<details><summary>Coupling (%d packages changed)</summary>\n\n", len(a.Coupling))
+		fmt.Fprintf(b, "<details><summary>Coupling (%s changed)</summary>\n\n", count(max(a.CouplingTotal, len(a.Coupling)), "package"))
 		b.WriteString("| Package | Ca | Ce | I | A | D |\n|---|---|---|---|---|---|\n")
 		for _, c := range a.Coupling {
-			fmt.Fprintf(b, "| %s | %d → %d | %d → %d | %.2f → %.2f | %.2f → %.2f | %.2f → %.2f |\n",
-				cell(codeSpan(rel(c.Pkg))), c.Base.Ca, c.Head.Ca, c.Base.Ce, c.Head.Ce,
-				c.Base.I, c.Head.I, c.Base.A, c.Head.A, c.Base.D, c.Head.D)
+			// A package new at head has no base value: "—".
+			ints := func(base, head int) string {
+				if c.New {
+					return fmt.Sprintf("— → %d", head)
+				}
+				return fmt.Sprintf("%d → %d", base, head)
+			}
+			decs := func(base, head float64) string {
+				if c.New {
+					return fmt.Sprintf("— → %.2f", head)
+				}
+				return fmt.Sprintf("%.2f → %.2f", base, head)
+			}
+			fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s |\n", cell(codeSpan(rel(c.Pkg))),
+				ints(c.Base.Ca, c.Head.Ca), ints(c.Base.Ce, c.Head.Ce),
+				decs(c.Base.I, c.Head.I), decs(c.Base.A, c.Head.A), decs(c.Base.D, c.Head.D))
 		}
 		b.WriteString("\n</details>\n\n")
 	}

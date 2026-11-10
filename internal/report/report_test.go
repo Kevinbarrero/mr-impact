@@ -603,7 +603,7 @@ func TestRender_ArchDeclared(t *testing.T) {
 	want := "🏛 **Architecture** (hexagonal) · conformance 96.0 % → 95.2 % · 214/225 packages classified\n\n" +
 		"- ❌ new: `domain → adapters` — `internal/domain/order/order.go:7` imports `internal/adapters/pg` (+3 violations already in base)\n" +
 		"- ❌ new: `adapters → adapters` (isolated) — `internal/adapters/http/h.go:5` imports `internal/adapters/pg`\n\n" +
-		"<details><summary>Coupling (1 packages changed)</summary>\n\n" +
+		"<details><summary>Coupling (1 package changed)</summary>\n\n" +
 		"| Package | Ca | Ce | I | A | D |\n" +
 		"|---|---|---|---|---|---|\n" +
 		"| `internal/domain/order` | 4 → 4 | 1 → 2 | 0.20 → 0.33 | 0.25 → 0.25 | 0.55 → 0.42 |\n\n" +
@@ -698,5 +698,43 @@ func TestRender_ArchBaseMissing(t *testing.T) {
 	want = "🏛 **Architecture (inferred — hints, not enforced)** · conformance 75.0 % · 4/4 packages classified · layers: `internal/domain` → domain · (base not loaded: new violations not computed)\n\n"
 	if out := Render(archModel(a)); !strings.Contains(out, want) {
 		t.Errorf("missing %q in\n%s", want, out)
+	}
+}
+
+func TestRender_ArchSingularAndNewPackage(t *testing.T) {
+	a := &arch.Result{Model: "hexagonal", Module: archMod, Classified: 2, Total: 2, BaseConf: pct(100), HeadConf: pct(50), Existing: 1,
+		New: []arch.Violation{viol("internal/domain/a", "internal/adapters/b", "internal/domain/a/a.go", 3, "domain", "adapters", false)},
+		Coupling: []arch.MetricDelta{
+			{Pkg: archMod + "/internal/domain/a", Base: arch.Metric{Ca: 1, D: 1}, Head: arch.Metric{Ca: 1, Ce: 1, I: 0.5, D: 0.5}},
+			{Pkg: archMod + "/internal/adapters/b", New: true, Head: arch.Metric{Ca: 1, D: 1}},
+		},
+		CouplingTotal: 12,
+	}
+	out := Render(archModel(a))
+	for _, want := range []string{
+		"imports `internal/adapters/b` (+1 violation already in base)\n",
+		"<details><summary>Coupling (12 packages changed)</summary>\n",
+		"| `internal/adapters/b` | — → 1 | — → 0 | — → 0.00 | — → 0.00 | — → 1.00 |\n",
+		"| `internal/domain/a` | 1 → 1 | 0 → 1 | 0.00 → 0.50 | 0.00 → 0.00 | 1.00 → 0.50 |\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+// Ruling R17: an inferred model that classifies nothing at head has no hint
+// to give, whatever else changed.
+func TestRender_ArchInferredNothingClassified(t *testing.T) {
+	a := &arch.Result{Model: "inferred", Inferred: true, Module: archMod, Classified: 0, Total: 3,
+		Coupling:      []arch.MetricDelta{{Pkg: archMod + "/svc", New: true, Head: arch.Metric{Ca: 1, D: 1}}},
+		CouplingTotal: 1,
+	}
+	if out := Render(archModel(a)); strings.Contains(out, "🏛") {
+		t.Errorf("section rendered with nothing classified:\n%s", out)
+	}
+	a.Classified = 1
+	if out := Render(archModel(a)); !strings.Contains(out, "🏛") {
+		t.Errorf("section missing once a package is classified:\n%s", out)
 	}
 }

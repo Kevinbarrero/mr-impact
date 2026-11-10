@@ -684,3 +684,53 @@ func TestRun_NilArchIsInferred(t *testing.T) {
 		t.Errorf("Arch = %+v, want the inferred result", m.Arch)
 	}
 }
+
+// A package that only lost a file (deleted, or moved away by a rename) is
+// still touched: its coupling change is reported.
+func TestRun_ArchTouchedByDeletedAndRenamedFiles(t *testing.T) {
+	write := func(dir, name, src string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Long enough that git -M pairs the moved file despite its new package clause.
+	body := "\nimport \"example.com/tp/internal/repository/c\"\n\n"
+	for i := range 20 {
+		body += fmt.Sprintf("// Line %d of a file that moves to another package unchanged.\n", i)
+	}
+	body += "func Moved() int { return c.C() }\n"
+	base, head := t.TempDir(), t.TempDir()
+	for _, d := range []string{base, head} {
+		write(d, "go.mod", "module example.com/tp\n\ngo 1.26\n")
+		write(d, "internal/repository/c/c.go", "package c\n\nfunc C() int { return 1 }\n")
+		write(d, "internal/service/a/a.go", "package a\n\nfunc A() int { return 1 }\n")
+		write(d, "internal/service/d/d.go", "package d\n\nfunc D() int { return 1 }\n")
+	}
+	write(base, "internal/service/a/b.go", "package a\n\nimport \"example.com/tp/internal/repository/c\"\n\nfunc B() int { return c.C() }\n")
+	write(base, "internal/service/d/moved.go", "package d\n"+body)
+	write(head, "internal/service/e/moved.go", "package e\n"+body)
+	repo, baseSHA, _ := testutil.MakeRepo(t, base, head)
+	m, err := Run(context.Background(), Config{Dir: repo, Base: baseSHA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range m.Arch.Coupling {
+		got[c.Pkg] = fmt.Sprintf("Ce %d→%d new=%v", c.Base.Ce, c.Head.Ce, c.New)
+	}
+	want := map[string]string{
+		"example.com/tp/internal/service/a": "Ce 1→0 new=false", // b.go deleted
+		"example.com/tp/internal/service/d": "Ce 1→0 new=false", // moved.go renamed away
+		"example.com/tp/internal/service/e": "Ce 0→1 new=true",
+	}
+	for p, w := range want {
+		if got[p] != w {
+			t.Errorf("%s: %q, want %q (coupling %v)", p, got[p], w, got)
+		}
+	}
+}

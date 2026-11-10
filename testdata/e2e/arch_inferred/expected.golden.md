@@ -6,7 +6,7 @@
 
 - ❌ new: `core → adapters` — `internal/domain/order/order.go:3` imports `internal/repository/pg`
 
-<details><summary>Coupling (1 packages changed)</summary>
+<details><summary>Coupling (1 package changed)</summary>
 
 | Package | Ca | Ce | I | A | D |
 |---|---|---|---|---|---|
