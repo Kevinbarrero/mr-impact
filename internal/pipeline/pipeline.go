@@ -443,7 +443,7 @@ func configNote(ctx context.Context, cfg Config, baseSHA string) *report.ConfigN
 			n.Changed = true
 		}
 	}
-	if !n.Changed && len(head.Critical) == 0 && len(head.SensitiveRemove) == 0 {
+	if !n.Changed && len(head.Critical) == 0 && len(head.SensitiveRemove) == 0 && !head.Architecture.Set {
 		return nil
 	}
 	return n

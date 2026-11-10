@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
+⚙️ .mrimpact.yml: architecture modular
+
 🏛 **Architecture** (modular) · conformance 100.0 % → 75.0 % · 4/4 packages classified
 
 - ❌ new: `billing → orders` — `internal/billing/x/x.go:5` imports `internal/orders/store`
