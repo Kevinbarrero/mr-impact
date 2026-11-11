@@ -140,8 +140,8 @@ func checkSensitiveZeroConfig(t *testing.T, m report.Model) {
 	if s, ok := sensitiveOf(m, "run.Exec"); !ok || !s.Untested || s.APIs[0] != "os/exec.Command" {
 		t.Errorf("run.Exec section row = %+v, %v", s, ok)
 	}
-	if r := rowOf(t, m, "store.Save"); r.Level != risk.Green || r.Kind != "body · sensitive" {
-		t.Errorf("store.Save = %v %q, want green \"body · sensitive\"", r.Level, r.Kind)
+	if r := rowOf(t, m, "store.Save"); r.Level != risk.Yellow || r.Reason != "added lines not measured" || r.Kind != "body · sensitive" {
+		t.Errorf("store.Save = %v %q %q, want yellow \"added lines not measured\" \"body · sensitive\"", r.Level, r.Reason, r.Kind)
 	}
 	if s, ok := sensitiveOf(m, "store.Save"); !ok || s.Untested || strings.Join(s.APIs, ",") != "database/sql.(*DB).ExecContext" {
 		t.Errorf("store.Save section row = %+v, %v", s, ok)

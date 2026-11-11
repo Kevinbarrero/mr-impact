@@ -219,8 +219,10 @@ func TestAssess_SensitiveStatic(t *testing.T) {
 		t.Fatalf("not reached = %v, want Red", got)
 	}
 	in.TestReached = true
-	if got := Assess(in); got != Green {
-		t.Fatalf("reached = %v, want Green", got)
+	// Reached by a test: not the red sensitive-untested rule, but without a
+	// profile the added lines are not measured, so at most yellow.
+	if got := Rate(in); got.Level != Yellow || got.Reason != "added lines not measured" {
+		t.Fatalf("reached = %+v, want Yellow \"added lines not measured\"", got)
 	}
 }
 
