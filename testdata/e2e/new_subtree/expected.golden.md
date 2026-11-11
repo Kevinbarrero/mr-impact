@@ -3,6 +3,8 @@
 **🔴 1 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `0000000`\
 +3 new functions folded into 1 group
 
+👉 **Look at first:** `svc.fmt` (untested, 2 callers) · `main.main` (untested, no callers)
+
 All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |

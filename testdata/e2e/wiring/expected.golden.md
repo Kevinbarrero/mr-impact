@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 3 functions changed
 **🔴 1 · 🟡 2 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `lib.Build` (untested, 2 callers) · `lib.NewService` (wiring, untested) · `main.run` (wiring, untested)
+
 All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |

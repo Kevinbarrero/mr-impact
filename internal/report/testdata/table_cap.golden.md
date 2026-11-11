@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 60 functions changed
 **🔴 0 · 🟡 0 · 🟢 60** · coverage: `static` · base `abcdef0`
 
+<details><summary>60 more changed functions (🟢 60)</summary>
+
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
 | 🟢 | `p.F00` | body | 0 | n/a |
@@ -56,46 +58,6 @@
 | 🟢 | `p.F49` | body | 0 | n/a |
 
 _… and 10 more_
-
-**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
-
-```mermaid
-flowchart RL
-  n0["🟢 p.F00"]:::green
-  n1["🟢 p.F01"]:::green
-  n2["🟢 p.F02"]:::green
-  n3["🟢 p.F03"]:::green
-  n4["🟢 p.F04"]:::green
-  n5["🟢 p.F05"]:::green
-  n6["🟢 p.F06"]:::green
-  n7["🟢 p.F07"]:::green
-  n8["🟢 p.F08"]:::green
-  n9["🟢 p.F09"]:::green
-  n10["🟢 p.F10"]:::green
-  n11["🟢 p.F11"]:::green
-  n12["🟢 p.F12"]:::green
-  n13["🟢 p.F13"]:::green
-  n14["🟢 p.F14"]:::green
-  n15["🟢 p.F15"]:::green
-  n16["🟢 p.F16"]:::green
-  n17["🟢 p.F17"]:::green
-  n18["🟢 p.F18"]:::green
-  n19["🟢 p.F19"]:::green
-  subgraph legend ["Legend"]
-    direction LR
-    lr["🔴 changed, not tested"]:::red
-    ly["🟡 partly tested / branch removed"]:::yellow
-    lg["🟢 changed, tested"]:::green
-    lc["caller, not changed"]
-  end
-  classDef red fill:#fdd,stroke:#c00
-  classDef yellow fill:#ffd,stroke:#c90
-  classDef green fill:#dfd,stroke:#2a2
-```
-
-40 more changed functions are not drawn; see the table.
-
-<details><summary>All callers (0)</summary>
 
 </details>
 

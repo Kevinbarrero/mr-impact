@@ -3,6 +3,8 @@
 **🔴 0 · 🟡 1 · 🟢 1** · coverage: `coverprofile` · base `abcdef0`\
 +2 new functions folded into 1 group
 
+👉 **Look at first:** `svc.New`
+
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
 | 🟡 | `svc.New` | new · +2 | 1 | 67 % (4/6) · 1 untested |

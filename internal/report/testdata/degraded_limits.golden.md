@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 4 functions changed
 **🔴 2 · 🟡 1 · 🟢 1** · coverage: `static` · base `a1b2c3d` · ⚠️ degraded
 
+👉 **Look at first:** `pricing.(*Calculator).Total` · `orders.applyDiscount` · `orders.Validate`
+
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
 | 🔴 | `pricing.(*Calculator).Total` | signature (exported) | 14 (4 pkgs) | 0 % (0/12) |

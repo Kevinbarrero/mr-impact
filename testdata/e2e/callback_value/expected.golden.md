@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `calc.double` (untested, 2 callers)
+
 | Risk | Function | Change | Callers | Registered | Entry points | Added-line coverage |
 |---|---|---|---|---|---|---|
 | 🔴 | `calc.double` | body | 2 | `apply(xs, …)` | `apply(xs, …)`, api `calc.Run` | not reached |

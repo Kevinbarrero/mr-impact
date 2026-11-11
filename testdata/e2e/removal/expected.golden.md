@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 4 functions changed
 **🔴 0 · 🟡 4 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `svc.(*Svc).Select` (branch removed) · `svc.Count` (added lines not measured) · `svc.NewOther` (wiring, untested) +1
+
 ↪️ **Removed `case`, value still exists** — these values now take another path (1):
 
 - `case Hedge` in `svc.(*Svc).Select` — now matches no case — `internal/svc/svc.go:26`

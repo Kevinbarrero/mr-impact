@@ -23,6 +23,9 @@ const Marker = "<!-- mrimpact:v1 -->"
 const (
 	maxTableRows   = 50
 	maxDiagramNode = 20
+	compactAbove   = 20 // table rows above which the layout is compact
+	compactYellow  = 10 // yellow rows the compact layout keeps visible
+	lookFirstN     = 3  // rows named by the "Look at first" line
 	maxCallerList  = 10
 	maxUnusedList  = 15
 	maxInlineList  = 5 // longer lists are counted and collapsed
@@ -176,6 +179,7 @@ func Render(m Model) string {
 		fmt.Fprintf(&b, "\\\n+%d new functions folded into %d %s", m.Folded, m.Groups, groups)
 	}
 	b.WriteString("\n\n")
+	writeLookFirst(&b, funcs)
 	writeConfigNote(&b, m.Config)
 
 	if m.CrossPkgOnly > 0 {
@@ -194,10 +198,20 @@ func Render(m Model) string {
 
 	// With no rated functions there is nothing for the table, diagram or
 	// caller list to show; only the context lines and limits remain.
+	// shown: the rows the table, uncovered lines, diagram and caller list
+	// cover. Compact layout: only the visible ones.
+	shown := funcs
 	if len(funcs) > 0 {
-		writeTable(&b, funcs)
+		if len(funcs) > compactAbove {
+			var hidden []FuncRow
+			shown, hidden = splitCompact(funcs)
+			writeCompactTable(&b, funcs, shown, hidden)
+		} else {
+			writeTable(&b, funcs)
+			shown = funcs[:min(maxTableRows, len(funcs))]
+		}
 		if m.Coverage == "coverprofile" {
-			writeUncovered(&b, funcs[:min(maxTableRows, len(funcs))])
+			writeUncovered(&b, shown)
 		}
 	}
 
@@ -213,8 +227,15 @@ func Render(m Model) string {
 	}
 
 	if len(funcs) > 0 {
-		writeDiagram(&b, funcs)
-		writeCallers(&b, funcs)
+		if len(funcs) > compactAbove {
+			if len(shown) > 0 {
+				writeDiagram(&b, shown)
+				writeCallers(&b, shown)
+			}
+		} else {
+			writeDiagram(&b, funcs)
+			writeCallers(&b, funcs)
+		}
 	}
 
 	b.WriteString("<details><summary>⚠️ Limits of this analysis</summary>\n\n")
@@ -292,12 +313,26 @@ func codeSpan(s string) string {
 }
 
 func writeTable(b *strings.Builder, funcs []FuncRow) {
+	cut := funcs[:min(maxTableRows, len(funcs))]
+	writeRows(b, cut, nil, true)
+	if len(funcs) > maxTableRows {
+		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
+	}
+	b.WriteString("\n")
+	writeMembers(b, cut)
+}
+
+// writeRows writes one table of rows: the columns the rows need, the "All
+// changes shown are reached from" line when stated is set, and the rows. The
+// common entry points are computed over rows unless given (the collapsed
+// table omits the visible table's); it returns the ones used.
+func writeRows(b *strings.Builder, rows []FuncRow, given []string, stated bool) []string {
 	withReg, withEntries := false, false
-	for i, f := range funcs {
-		if i < maxTableRows && len(f.Registered) > 0 {
+	for _, f := range rows {
+		if len(f.Registered) > 0 {
 			withReg = true
 		}
-		if i < maxTableRows && len(f.Entries) > 0 {
+		if len(f.Entries) > 0 {
 			withEntries = true
 		}
 	}
@@ -308,18 +343,15 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 	if withEntries {
 		head, sep = head+" Entry points |", sep+"---|"
 	}
-	var common []string
-	if withEntries {
-		common = commonEntries(funcs[:min(maxTableRows, len(funcs))])
+	common := given
+	if stated && withEntries {
+		common = commonEntries(rows)
 	}
-	if len(common) > 0 {
+	if stated && len(common) > 0 {
 		b.WriteString("All changes shown are reached from: " + strings.Join(common, ", ") + "\n\n")
 	}
 	b.WriteString(head + " Added-line coverage |\n" + sep + "---|\n")
-	for i, f := range funcs {
-		if i == maxTableRows {
-			break
-		}
+	for _, f := range rows {
 		fmt.Fprintf(b, "| %s | `%s` | %s | %s | ", f.Level.Emoji(), cell(f.Display), cell(f.Kind), callerCell(f.Callers))
 		if withReg {
 			b.WriteString(registeredCell(f.Registered) + " | ")
@@ -329,11 +361,102 @@ func writeTable(b *strings.Builder, funcs []FuncRow) {
 		}
 		fmt.Fprintf(b, "%s |\n", cell(f.CoverText))
 	}
+	return common
+}
+
+// splitCompact splits the table's rows (the first maxTableRows of funcs, in
+// order) for the compact layout: visible is every red row then the first
+// compactYellow yellow ones; hidden is the rest, in order.
+func splitCompact(funcs []FuncRow) (visible, hidden []FuncRow) {
+	yellow := 0
+	for _, f := range funcs[:min(maxTableRows, len(funcs))] {
+		switch {
+		case f.Level == risk.Red:
+			visible = append(visible, f)
+		case f.Level == risk.Yellow && yellow < compactYellow:
+			yellow++
+			visible = append(visible, f)
+		default:
+			hidden = append(hidden, f)
+		}
+	}
+	return visible, hidden
+}
+
+// writeCompactTable writes the visible table, then the collapsed one with the
+// rest. The summary counts every row not visible, including those past the
+// row cap; the overflow line for those sits inside the collapsed block.
+func writeCompactTable(b *strings.Builder, funcs, visible, hidden []FuncRow) {
+	var common []string
+	if len(visible) > 0 { // all green: nothing to show above the fold
+		common = writeRows(b, visible, nil, true)
+		b.WriteString("\n")
+		writeMembers(b, visible)
+	}
+
+	var yellow, green int
+	for _, f := range funcs {
+		if f.Level == risk.Green {
+			green++
+		} else if f.Level == risk.Yellow {
+			yellow++
+		}
+	}
+	for _, f := range visible {
+		if f.Level == risk.Yellow {
+			yellow--
+		}
+	}
+	var parts []string
+	if yellow > 0 {
+		parts = append(parts, fmt.Sprintf("🟡 %d", yellow))
+	}
+	if green > 0 {
+		parts = append(parts, fmt.Sprintf("🟢 %d", green))
+	}
+	// A red row past the cap is hidden too: it counts, in its own part.
+	if red := len(funcs) - len(visible) - yellow - green; red > 0 {
+		parts = append([]string{fmt.Sprintf("🔴 %d", red)}, parts...)
+	}
+	fmt.Fprintf(b, "<details><summary>%d more changed functions (%s)</summary>\n\n", len(funcs)-len(visible), strings.Join(parts, " · "))
+	if len(hidden) > 0 {
+		writeRows(b, hidden, common, false)
+	}
 	if len(funcs) > maxTableRows {
 		fmt.Fprintf(b, "\n_… and %d more_\n", len(funcs)-maxTableRows)
 	}
 	b.WriteString("\n")
-	writeMembers(b, funcs[:min(maxTableRows, len(funcs))])
+	writeMembers(b, hidden)
+	b.WriteString("</details>\n\n")
+}
+
+// writeLookFirst names the first lookFirstN red or yellow rows in table
+// order, with the rule that rated each, and counts the rest.
+func writeLookFirst(b *strings.Builder, funcs []FuncRow) {
+	var items []string
+	n := 0
+	for _, f := range funcs {
+		if f.Level == risk.Green {
+			continue
+		}
+		n++
+		if n > lookFirstN {
+			continue
+		}
+		item := "`" + f.Display + "`"
+		if f.Reason != "" {
+			item += " (" + f.Reason + ")"
+		}
+		items = append(items, item)
+	}
+	if n == 0 {
+		return
+	}
+	b.WriteString("👉 **Look at first:** " + strings.Join(items, " · "))
+	if n > lookFirstN {
+		fmt.Fprintf(b, " +%d", n-lookFirstN)
+	}
+	b.WriteString("\n\n")
 }
 
 // writeUncovered lists, per red or yellow row in table order, the added lines

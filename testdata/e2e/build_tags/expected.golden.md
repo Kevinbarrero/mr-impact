@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `main.Plain` (untested, 1 caller)
+
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
 | 🔴 | `main.Plain` | body | 1 | main | not reached |

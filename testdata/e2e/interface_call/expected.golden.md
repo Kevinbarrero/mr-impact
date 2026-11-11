@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `store.(*Mem).Get` (untested, 2 callers)
+
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
 | 🔴 | `store.(*Mem).Get` | body | 2 (2 pkgs) | api `api.Handle`, api `store.(*Mem).Get` +1 | not reached |

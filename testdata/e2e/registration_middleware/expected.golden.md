@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 4 functions changed
 **🔴 0 · 🟡 4 · 🟢 0** · coverage: `coverprofile` · base `0000000`
 
+👉 **Look at first:** `api.Register` (wiring, untested) · `svc.(*Service).Lookup` (partly tested, 40 %) · `svc.NewService` (wiring, untested) +1
+
 🔌 **Registrations changed** (1, positions in head):
 
 - `GET …/trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`

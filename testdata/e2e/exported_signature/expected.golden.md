@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 2 functions changed
 **🔴 1 · 🟡 1 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `pricing.Total` (exported signature changed) · `orders.Create` (added lines not measured)
+
 All changes shown are reached from: api `orders.Create`
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |

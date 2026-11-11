@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 2 functions changed
 **🔴 1 · 🟡 1 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `pay.Settle` (sensitive, untested) · `describe.Tool` (untested, no callers)
+
 ⚙️ .mrimpact.yml: critical `internal/pay/...` · removes `os/exec.*` — changed in this MR (MR removes from defaults: `os/exec.*`)
 
 🔐 **Sensitive code changed** (1):

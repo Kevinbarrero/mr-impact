@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `abcdef0`
 
+👉 **Look at first:** `a.Target`
+
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
 | 🔴 | `a.Target` | body | 30 | n/a |

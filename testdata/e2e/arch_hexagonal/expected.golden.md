@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 0 · 🟡 1 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `http.Handle` (wiring, untested)
+
 ⚙️ .mrimpact.yml: architecture hexagonal
 
 🏛 **Architecture** (hexagonal) · conformance 75.0 % → 60.0 % · 5/5 packages classified

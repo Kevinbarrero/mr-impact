@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 0 · 🟡 1 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `order.Total` (added lines not measured)
+
 🏛 **Architecture (inferred — hints, not enforced)** · conformance 100.0 % → 50.0 % · 4/4 packages classified · layers: `internal/domain/order` → core
 
 - ❌ new: `core → adapters` — `internal/domain/order/order.go:3` imports `internal/repository/pg`

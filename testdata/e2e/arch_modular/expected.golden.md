@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 1 functions changed
 **🔴 1 · 🟡 0 · 🟢 0** · coverage: `static` · base `0000000`
 
+👉 **Look at first:** `x.Bill` (untested, 1 caller)
+
 ⚙️ .mrimpact.yml: architecture modular
 
 🏛 **Architecture** (modular) · conformance 100.0 % → 75.0 % · 4/4 packages classified

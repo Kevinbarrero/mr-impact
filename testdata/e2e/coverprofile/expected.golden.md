@@ -2,6 +2,8 @@
 ### 🔍 MR impact — 5 functions changed
 **🔴 1 · 🟡 3 · 🟢 1** · coverage: `coverprofile` · base `0000000`
 
+👉 **Look at first:** `grade.Report` (untested, 1 caller) · `grade.Bonus` (partly tested, 80 %) · `grade.Card` (untested, no callers) +1
+
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
 | 🔴 | `grade.Report` | body | 1 | api `grade.Card`, api `grade.Report` | 0 % (0/2) |
