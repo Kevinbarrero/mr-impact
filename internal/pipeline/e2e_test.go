@@ -54,6 +54,9 @@ func TestE2E(t *testing.T) {
 		{name: "arch_hexagonal", check: checkArchHexagonal},
 		{name: "arch_modular", check: checkArchModular},
 		{name: "registration_middleware", profiles: []string{"coverage.out"}, check: checkRegistrationMiddleware},
+		{name: "branch_moved", profiles: []string{"coverage.out"}, check: checkBranchMoved},
+		{name: "stdlib_called", check: checkStdlibCalled},
+		{name: "go_work", check: checkGoWork},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,6 +204,45 @@ func checkRegistrationMiddleware(t *testing.T, m report.Model) {
 	}
 	if strings.Contains(out, "Registrations removed") || strings.Contains(out, "Registrations added") {
 		t.Errorf("the changed registration is also listed as removed or added:\n%s", out)
+	}
+}
+
+// checkBranchMoved: Check lost its only branch to limits.exceeds, which is on
+// added lines the profile covers, so the move is recognised and the row is 🟢.
+func checkBranchMoved(t *testing.T, m report.Model) {
+	r := rowOf(t, m, "limits.Check")
+	if r.Kind != "body (branch moved to `limits.exceeds`)" || r.Level != risk.Green {
+		t.Errorf("limits.Check = %v %q, want green \"body (branch moved to `limits.exceeds`)\"", r.Level, r.Kind)
+	}
+}
+
+// checkStdlibCalled: Unwrap has no static caller but errors.Is calls it, so a
+// test that uses errors.Is reaches it; static mode cannot measure its added lines.
+func checkStdlibCalled(t *testing.T, m report.Model) {
+	r := rowOf(t, m, "sc.candidateErrors.Unwrap")
+	if r.CoverText != "reached by test · added lines not measured" {
+		t.Errorf("Unwrap cover = %q, want \"reached by test · added lines not measured\"", r.CoverText)
+	}
+}
+
+// checkGoWork: a go.work that exists only at head is reported, and the base
+// (loaded with GOWORK=off) still loads.
+func checkGoWork(t *testing.T, m report.Model) {
+	w := m.Workspace
+	if w == nil {
+		t.Fatal("Workspace is nil, want the head go.work")
+	}
+	found := false
+	for _, mod := range w.Modules {
+		if mod.Path == "example.com/lib" && mod.Dir == "lib" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Workspace modules = %+v, want example.com/lib in lib", w.Modules)
+	}
+	if out := report.Render(m); strings.Contains(out, "base not loaded") {
+		t.Errorf("base must load with GOWORK=off:\n%s", out)
 	}
 }
 

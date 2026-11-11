@@ -176,9 +176,9 @@ flowchart RL
 
 ## What a reviewer learns
 
-- **What changed, ranked by risk:** every changed function with its kind (`new`, `body`, `signature`, a removed branch, straight-line wiring), rated 🔴/🟡/🟢 by fixed rules.
+- **What changed, ranked by risk:** every changed function with its kind (`new`, `body`, `signature`, a removed branch, straight-line wiring), rated 🔴/🟡/🟢 by fixed rules; the riskiest row is named in a `Look at first` line, a branch that moved to another function says where, and a big MR collapses its lesser rows.
 - **Who depends on it:** its callers up to `--depth`, where it is registered as a callback, and the entry points that reach it: routes and handlers, exported API, `main` and `init`.
-- **Whether a test covers it:** the coverage of the added lines from your coverprofile, or, without one, whether any test reaches the function in the call graph, across packages.
+- **Whether a test covers it:** the coverage of the added lines from your coverprofile, or, without one, whether any test reaches the function in the call graph, across packages, including methods the standard library calls (`Unwrap` through `errors.Is`, `ServeHTTP`); without a coverprofile a function with added lines is at most 🟡 (`added lines not measured`). A `go.work` in effect is stated in a `📦` line.
 - **Untested sensitive code:** changed functions that call process, file, SQL, HTTP, crypto, deserialization or mutating reflection APIs (or sit in a package you mark `critical`) and have no test.
 - **What the change left behind:** code now unused, config fields nothing reads any more, registrations removed or rewired, and new import edges that break the architecture's layer rules.
 
