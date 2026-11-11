@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/mod/modfile"
+
 	"github.com/Kevinbarrero/mr-impact/internal/arch"
 	"github.com/Kevinbarrero/mr-impact/internal/callgraph"
 	"github.com/Kevinbarrero/mr-impact/internal/config"
@@ -263,7 +265,11 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	var rated []ratedFunc
 	for _, f := range live {
 		if !prog.Files[f.File] {
-			m.NotAnalyzed = append(m.NotAnalyzed, f.Display+" (build tags)")
+			reason := "build tags"
+			if mod, ok := otherModule(cfg.Dir, f.File); ok {
+				reason = "in another module: " + mod
+			}
+			m.NotAnalyzed = append(m.NotAnalyzed, f.Display+" ("+reason+")")
 			continue
 		}
 		var im callgraph.Impact
@@ -789,4 +795,21 @@ func touchedAPIs(sites []sensitive.Site, added []int, critical string) []string 
 		}
 	}
 	return out
+}
+
+// otherModule reports the module path of the nearest go.mod above rel (a
+// slash path relative to root) that lies below root: the file belongs to a
+// module other than the analysed one, which is never loaded.
+func otherModule(root, rel string) (string, bool) {
+	for d := path.Dir(rel); d != "." && d != "/" && d != ""; d = path.Dir(d) {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d), "go.mod"))
+		if err != nil {
+			continue
+		}
+		if p := modfile.ModulePath(b); p != "" {
+			return p, true
+		}
+		return filepath.ToSlash(d), true
+	}
+	return "", false
 }

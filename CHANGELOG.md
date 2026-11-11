@@ -18,6 +18,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- A changed function in another module of a `go.work` workspace reads `Not analyzed: … (in another module: <path>)`, not `(build tags)`.
 - Methods the standard library calls on interface values (`Error`, `Unwrap` through `errors.Is`/`errors.As`, `String`, `ServeHTTP`, …) count as reached by a test that converts their type to an interface; before, they read `not reached` and no callers. These edges never count as callers.
 - The base revision is loaded with `GOWORK=off`, from its own `go.mod`, so a `go.work` that exists only at the head (or names modules the base lacks) no longer fails the base load.
 

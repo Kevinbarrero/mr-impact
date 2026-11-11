@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -240,6 +241,9 @@ func checkGoWork(t *testing.T, m report.Model) {
 	}
 	if !found {
 		t.Errorf("Workspace modules = %+v, want example.com/lib in lib", w.Modules)
+	}
+	if !slices.Contains(m.NotAnalyzed, "lib.Name (in another module: example.com/lib)") {
+		t.Errorf("NotAnalyzed = %v, want lib.Name (in another module: example.com/lib)", m.NotAnalyzed)
 	}
 	if out := report.Render(m); strings.Contains(out, "base not loaded") {
 		t.Errorf("base must load with GOWORK=off:\n%s", out)
