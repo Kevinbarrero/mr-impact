@@ -2,7 +2,7 @@
 ### 🔍 MR impact — 4 functions changed
 **🔴 0 · 🟡 4 · 🟢 0** · coverage: `static` · base `0000000`
 
-👉 **Look at first:** `svc.(*Svc).Select` (branch removed) · `svc.Count` (added lines not measured) · `svc.NewOther` (wiring, untested) +1
+👉 **Look at first:** `svc.(*Svc).Select` (branch removed) · `svc.NewOther` (wiring, untested) · `main.main` (untested, no callers) +1
 
 ↪️ **Removed `case`, value still exists** — these values now take another path (1):
 

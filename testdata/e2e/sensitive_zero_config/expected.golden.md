@@ -2,7 +2,7 @@
 ### 🔍 MR impact — 3 functions changed
 **🔴 1 · 🟡 2 · 🟢 0** · coverage: `static` · base `0000000`
 
-👉 **Look at first:** `run.Exec` (sensitive, untested) · `store.Save` (added lines not measured) · `util.Label` (untested, no callers)
+👉 **Look at first:** `run.Exec` (sensitive, untested) · `util.Label` (untested, no callers) · `store.Save` (added lines not measured)
 
 🔐 **Sensitive code changed** (2):
 
