@@ -39,6 +39,12 @@ type ChangedFunc struct {
 	// returns than BASE (Body and Signature only). Removed control flow
 	// changes behaviour even when no line was added.
 	BranchesRemoved bool
+	// RemovedBranches, MovedBranches and MovedTo are set only with
+	// BranchesRemoved: the removed branch keys, how many of them reappear
+	// on added lines of another function, and those functions' Display.
+	RemovedBranches int
+	MovedBranches   int
+	MovedTo         []string
 	// Wiring: straight-line setup code (see isWiring). False for deleted
 	// functions.
 	Wiring bool
@@ -100,6 +106,7 @@ type fn struct {
 	exported   bool
 	paired     bool
 	branches   [4]int // case clauses, ifs, elses, returns
+	keys       []branchKey
 	wiring     bool
 	cases      []caseEntry
 	switches   map[string]switchInfo // by switchKey
@@ -195,6 +202,18 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 		}
 	}
 
+	// Branch keys that start on an added line, by text: a removed branch
+	// is "moved" when one of these belongs to another function.
+	destIndex := map[string][]*fn{}
+	for _, h := range heads {
+		added := changes[h.change].AddedLines
+		for _, k := range h.keys {
+			if anyIn(added, k.line, k.line) {
+				destIndex[k.text] = append(destIndex[k.text], h)
+			}
+		}
+	}
+
 	// Deleted-line hits per BASE function.
 	for _, h := range heads {
 		cf := ChangedFunc{
@@ -223,6 +242,9 @@ func Find(changes []diff.FileChange, head, base Source) (Result, error) {
 				if h.branches[k] < b.branches[k] {
 					cf.BranchesRemoved = true
 				}
+			}
+			if cf.BranchesRemoved {
+				cf.RemovedBranches, cf.MovedBranches, cf.MovedTo = movedBranches(h, b, destIndex)
 			}
 			res.RemovedCases = append(res.RemovedCases, removedCases(h, b)...)
 		}
@@ -314,6 +336,7 @@ func load(src Source, p, keyFile string, change int, changedLines []int, refs ma
 			x.sig += "|" + signature(fset, d.Type)
 			x.text = render(fset, d)
 			x.branches = branches(d)
+			x.keys = branchKeys(fset, d)
 			x.wiring = isWiring(d, imports)
 			x.cases, x.switches = switchCases(fset, d, path.Dir(p), imports)
 			fns = append(fns, x)

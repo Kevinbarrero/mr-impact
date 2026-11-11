@@ -3,6 +3,7 @@ package symbols
 import (
 	"fmt"
 	"io/fs"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -361,5 +362,72 @@ func TestFind_SetsWiring(t *testing.T) {
 	}
 	if len(got) != 2 || !got["p.setup"] || got["p.logic"] {
 		t.Fatalf("%+v", r.Funcs)
+	}
+}
+
+func movedFunc(t *testing.T, r Result, name string) ChangedFunc {
+	t.Helper()
+	for _, f := range r.Funcs {
+		if f.Display == name {
+			return f
+		}
+	}
+	t.Fatalf("no %s in %+v", name, r.Funcs)
+	return ChangedFunc{}
+}
+
+func TestMoved(t *testing.T) {
+	// Case 1: the whole guard moves into a new function.
+	base := "package p\n\nfunc F(x int) error {\n\tif x > limit {\n\t\treturn errTooBig\n\t}\n\treturn nil\n}\n"
+	head := "package p\n\nfunc F(x int) error {\n\treturn checkLimit(x)\n}\n\nfunc checkLimit(x int) error {\n\tif x > limit {\n\t\treturn errTooBig\n\t}\n\treturn nil\n}\n"
+	r := run(t, []diff.FileChange{mod("p.go", []int{4, 5, 6, 7, 8, 9, 10, 11, 12}, []int{4, 5, 6, 7})}, files{"p.go": head}, files{"p.go": base})
+	f := movedFunc(t, r, "p.F")
+	if !f.BranchesRemoved || f.RemovedBranches != 3 || f.MovedBranches != 3 || !reflect.DeepEqual(f.MovedTo, []string{"p.checkLimit"}) {
+		t.Errorf("case 1: %+v", f)
+	}
+
+	// Case 2: two removed, one found elsewhere.
+	base = "package p\n\nfunc F(x int) {\n\tif a {\n\t}\n\tif b {\n\t}\n}\n"
+	head = "package p\n\nfunc F(x int) {\n}\n\nfunc G() {\n\tif a {\n\t}\n}\n"
+	r = run(t, []diff.FileChange{mod("p.go", []int{6, 7, 8, 9}, []int{4, 5, 6, 7})}, files{"p.go": head}, files{"p.go": base})
+	f = movedFunc(t, r, "p.F")
+	if f.RemovedBranches != 2 || f.MovedBranches != 1 || !reflect.DeepEqual(f.MovedTo, []string{"p.G"}) {
+		t.Errorf("case 2: %+v", f)
+	}
+
+	// Case 3: renamed variable is no match.
+	base = "package p\n\nfunc F(x int) {\n\tif x > limit {\n\t}\n}\n"
+	head = "package p\n\nfunc F(x int) {\n}\n\nfunc G(n int) {\n\tif n > limit {\n\t}\n}\n"
+	r = run(t, []diff.FileChange{mod("p.go", []int{6, 7, 8, 9}, []int{4, 5})}, files{"p.go": head}, files{"p.go": base})
+	f = movedFunc(t, r, "p.F")
+	if f.RemovedBranches != 1 || f.MovedBranches != 0 || len(f.MovedTo) != 0 {
+		t.Errorf("case 3: %+v", f)
+	}
+
+	// Case 4: a case moves to another function's switch.
+	base = "package p\n\nfunc F(m int) {\n\tswitch m {\n\tcase 1:\n\tcase 2:\n\t}\n}\n\nfunc G(m int) {\n\tswitch m {\n\tcase 3:\n\t}\n}\n"
+	head = "package p\n\nfunc F(m int) {\n\tswitch m {\n\tcase 1:\n\t}\n}\n\nfunc G(m int) {\n\tswitch m {\n\tcase 3:\n\tcase 2:\n\t}\n}\n"
+	r = run(t, []diff.FileChange{mod("p.go", []int{12}, []int{6})}, files{"p.go": head}, files{"p.go": base})
+	f = movedFunc(t, r, "p.F")
+	if f.RemovedBranches != 1 || f.MovedBranches != 1 || !reflect.DeepEqual(f.MovedTo, []string{"p.G"}) {
+		t.Errorf("case 4: %+v", f)
+	}
+
+	// Case 5: the same text on an unchanged line is not a destination.
+	base = "package p\n\nfunc F(x int) {\n\tif x > limit {\n\t}\n\tg()\n}\n\nfunc G(x int) {\n\tif x > limit {\n\t}\n}\n"
+	head = "package p\n\nfunc F(x int) {\n\tg()\n}\n\nfunc G(x int) {\n\tif x > limit {\n\t}\n}\n"
+	r = run(t, []diff.FileChange{mod("p.go", nil, []int{4, 5})}, files{"p.go": head}, files{"p.go": base})
+	f = movedFunc(t, r, "p.F")
+	if f.RemovedBranches != 1 || f.MovedBranches != 0 {
+		t.Errorf("case 5: %+v", f)
+	}
+
+	// Case 6 (P3): a copy inside a closure of F itself.
+	base = "package p\n\nfunc F() {\n\tif a {\n\t}\n\tif b {\n\t}\n}\n"
+	head = "package p\n\nfunc F() {\n\tfunc() {\n\t\tif a {\n\t\t}\n\t}()\n}\n"
+	r = run(t, []diff.FileChange{mod("p.go", []int{4, 5, 6, 7}, []int{4, 5, 6, 7})}, files{"p.go": head}, files{"p.go": base})
+	f = movedFunc(t, r, "p.F")
+	if !f.BranchesRemoved || f.RemovedBranches != 1 || f.MovedBranches != 0 || len(f.MovedTo) != 0 {
+		t.Errorf("case 6: %+v", f)
 	}
 }

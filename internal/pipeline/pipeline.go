@@ -279,7 +279,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			Kind: f.Kind, Exported: f.Exported,
 			NonTestCallers: len(im.Callers), TestReached: im.TestReached,
 			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
-			BranchesRemoved: f.BranchesRemoved,
+			BranchesRemoved: f.BranchesRemoved && f.MovedBranches < f.RemovedBranches,
 			AddedLines:      len(f.AddedLines),
 			ReachUnknown:    graph == nil,
 		}
@@ -673,7 +673,7 @@ func kindText(f symbols.ChangedFunc, isSensitive bool) string {
 		k = "signature (exported)"
 	}
 	if f.BranchesRemoved {
-		k += " (branch removed)"
+		k += branchText(f)
 	}
 	if f.Wiring {
 		k += " · wiring"
@@ -682,6 +682,29 @@ func kindText(f symbols.ChangedFunc, isSensitive bool) string {
 		k += " · sensitive"
 	}
 	return k
+}
+
+// branchText renders the branch-removed suffix: moved branches name where
+// they went (at most two destinations, then " +N").
+func branchText(f symbols.ChangedFunc) string {
+	if f.MovedBranches == 0 || len(f.MovedTo) == 0 {
+		return " (branch removed)"
+	}
+	var names []string
+	for i, d := range f.MovedTo {
+		if i == 2 {
+			break
+		}
+		names = append(names, "`"+d+"`")
+	}
+	to := strings.Join(names, ", ")
+	if extra := len(f.MovedTo) - 2; extra > 0 {
+		to += fmt.Sprintf(" +%d", extra)
+	}
+	if f.MovedBranches >= f.RemovedBranches {
+		return " (branch moved to " + to + ")"
+	}
+	return fmt.Sprintf(" (branch removed · %d of %d moved to %s)", f.MovedBranches, f.RemovedBranches, to)
 }
 
 func containsAny(files []string, set map[string]bool) bool {
