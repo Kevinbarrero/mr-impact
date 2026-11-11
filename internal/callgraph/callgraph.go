@@ -620,7 +620,8 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 	pkgs := map[string]bool{}
 	// Test reach also follows implicit edges (a test that converts a type
 	// to an interface reaches the methods the standard library calls on
-	// it); Callers and TestCallers do not.
+	// it); Callers and TestCallers do not. The walk covers every node of
+	// depthOf, so the tests found there need no second look.
 	for id := range g.reach(target, true) {
 		if n := g.nodes[id]; id != target && n.testEntry {
 			im.TestReached = true
@@ -631,10 +632,6 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		n := g.nodes[id]
 		if id == target {
 			continue
-		}
-		if n.testEntry {
-			im.TestReached = true
-			pkgs[n.pkg] = true
 		}
 		if d > depth {
 			continue

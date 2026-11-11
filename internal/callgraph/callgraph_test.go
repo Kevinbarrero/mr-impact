@@ -582,6 +582,27 @@ func TestLibCalled_ValueConversionNoPointerMethods(t *testing.T) {
 	}
 }
 
+// fmt.Println(v) converts v to any: S.String is reached.
+func TestLibCalled_Println(t *testing.T) {
+	if im := lcImpact(t, "more.go", "func (S) String"); !im.TestReached {
+		t.Errorf("S.String not test-reached through fmt.Println(v): %+v", im)
+	}
+}
+
+// Converting *Q reaches the pointer-receiver method.
+func TestLibCalled_PointerConversion(t *testing.T) {
+	if im := lcImpact(t, "more.go", "func (*Q) String"); !im.TestReached {
+		t.Errorf("(*Q).String not test-reached though &Q{} is converted: %+v", im)
+	}
+}
+
+// A conversion inside a closure of a test counts as the test's own.
+func TestLibCalled_ClosureConversion(t *testing.T) {
+	if im := lcImpact(t, "more.go", "func (C) Error"); !im.TestReached {
+		t.Errorf("C.Error not test-reached through a test's closure: %+v", im)
+	}
+}
+
 func TestLibCalled_EntryPoints(t *testing.T) {
 	g := loadLibCalled(t)
 	got := g.EntryPoints("h.go", lineOf(t, lcDir, "h.go", "func (H) ServeHTTP"), apiPred)
