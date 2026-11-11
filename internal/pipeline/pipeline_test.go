@@ -3,6 +3,7 @@ package pipeline
 import (
 	"testing"
 
+	"github.com/Kevinbarrero/mr-impact/internal/diff"
 	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
@@ -30,4 +31,35 @@ func TestKindTextMoved(t *testing.T) {
 			t.Errorf("%s: got %q want %q", c.name, got, c.want)
 		}
 	}
+}
+
+// TestDeletedErrCheckNotMoved (C1): F drops `if err != nil { return err }`
+// while an unrelated new G adds its own; the row keeps "branch removed" and
+// the branch-removed rating rule.
+func TestDeletedErrCheckNotMoved(t *testing.T) {
+	base := "package p\n\nfunc F() error {\n\terr := f()\n\tif err != nil {\n\t\treturn err\n\t}\n\treturn nil\n}\n"
+	head := "package p\n\nfunc F() error {\n\t_ = f()\n\treturn nil\n}\n\nfunc G() error {\n\terr := g()\n\tif err != nil {\n\t\treturn err\n\t}\n\treturn nil\n}\n"
+	src := func(s string) symbols.Source {
+		return func(string) ([]byte, error) { return []byte(s), nil }
+	}
+	ch := []diff.FileChange{{Path: "p.go", OldPath: "p.go", Status: diff.Modified,
+		AddedLines: []int{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, DeletedLines: []int{4, 5, 6, 7, 8}}}
+	r, err := symbols.Find(ch, src(head), src(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range r.Funcs {
+		if f.Display != "p.F" {
+			continue
+		}
+		f.Wiring = false // straight-line F; only the branch suffix is under test
+		if got := kindText(f, false); got != "body (branch removed)" {
+			t.Errorf("kind = %q, want \"body (branch removed)\"", got)
+		}
+		if !branchRuleApplies(f) {
+			t.Error("the branch-removed rule must apply")
+		}
+		return
+	}
+	t.Fatal("no p.F")
 }

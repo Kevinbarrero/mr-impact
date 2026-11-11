@@ -6,7 +6,7 @@ All changes shown are reached from: api `limits.Check`, main
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
-| 🟢 | `limits.exceeds` | new | 2 (2 pkgs) | — | 100 % (5/5) |
+| 🟢 | `limits.exceeds` | new | 2 (2 pkgs) | — | 100 % (1/1) |
 | 🟢 | `limits.Check` | body (branch moved to `limits.exceeds`) | 1 | — | 100 % (1/1) |
 
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.

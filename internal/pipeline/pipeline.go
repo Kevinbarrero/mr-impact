@@ -285,7 +285,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 			Kind: f.Kind, Exported: f.Exported,
 			NonTestCallers: len(im.Callers), TestReached: im.TestReached,
 			Importable:      importable(pkgPathOf(prog.ModulePath, f.File), pkgName),
-			BranchesRemoved: f.BranchesRemoved && f.MovedBranches < f.RemovedBranches,
+			BranchesRemoved: branchRuleApplies(f),
 			AddedLines:      len(f.AddedLines),
 			ReachUnknown:    graph == nil,
 		}
@@ -688,6 +688,12 @@ func kindText(f symbols.ChangedFunc, isSensitive bool) string {
 		k += " · sensitive"
 	}
 	return k
+}
+
+// branchRuleApplies reports whether the "branch removed" rating rule
+// applies: a branch was removed and not every removed branch moved.
+func branchRuleApplies(f symbols.ChangedFunc) bool {
+	return f.BranchesRemoved && f.MovedBranches < f.RemovedBranches
 }
 
 // branchText renders the branch-removed suffix: moved branches name where

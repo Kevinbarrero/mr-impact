@@ -13,3 +13,10 @@ var errTooBig = errors.New("too big")
 func Check(n int) error {
 	return exceeds(n * scale)
 }
+
+func exceeds(n int) error {
+	if n > max {
+		return errTooBig
+	}
+	return nil
+}
