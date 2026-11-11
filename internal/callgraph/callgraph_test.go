@@ -616,4 +616,18 @@ func TestLibraryCalledList(t *testing.T) {
 	if libraryCalled(types.NewFunc(0, nil, "Unwrap", sig)) {
 		t.Error("Unwrap() string library-called")
 	}
+	// Parameter and result names are not part of the signature.
+	errT := types.Universe.Lookup("error").Type()
+	bytesT := types.NewSlice(types.Typ[types.Byte]) // prints []uint8: identical to []byte
+	is := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewParam(0, nil, "target", errT)),
+		types.NewTuple(types.NewParam(0, nil, "", types.Typ[types.Bool])), false)
+	if !libraryCalled(types.NewFunc(0, nil, "Is", is)) {
+		t.Error("Is(target error) bool not library-called")
+	}
+	mj := types.NewSignatureType(nil, nil, nil, nil,
+		types.NewTuple(types.NewParam(0, nil, "b", bytesT), types.NewParam(0, nil, "err", errT)), false)
+	if !libraryCalled(types.NewFunc(0, nil, "MarshalJSON", mj)) {
+		t.Error("MarshalJSON() (b []byte, err error) not library-called")
+	}
 }

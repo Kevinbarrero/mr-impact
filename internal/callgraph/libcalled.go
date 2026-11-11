@@ -2,6 +2,7 @@ package callgraph
 
 import (
 	"go/types"
+	"regexp"
 	"strings"
 )
 
@@ -34,8 +35,24 @@ var libCalledList = []struct{ name, sig string }{
 	{"Value", "func() (database/sql/driver.Value, error)"},
 }
 
+// uint8Word and int32Word find the basic types the list spells byte and
+// rune: go/types prints whichever the source wrote.
+var (
+	uint8Word = regexp.MustCompile(`\buint8\b`)
+	int32Word = regexp.MustCompile(`\bint32\b`)
+)
+
+// listSpelling spells s's identical types as the list does: any for
+// interface{}, byte for uint8, rune for int32.
+func listSpelling(s string) string {
+	s = strings.ReplaceAll(s, "interface{}", "any")
+	s = uint8Word.ReplaceAllString(s, "byte")
+	return int32Word.ReplaceAllString(s, "rune")
+}
+
 // libraryCalled reports whether fn's name and signature are on
-// libCalledList. The receiver is not part of the compared signature.
+// libCalledList. The receiver and the parameter and result names are not
+// part of the compared signature.
 func libraryCalled(fn *types.Func) bool {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok {
@@ -48,12 +65,22 @@ func libraryCalled(fn *types.Func) bool {
 			continue
 		}
 		if text == "" {
-			plain := types.NewSignatureType(nil, nil, nil, sig.Params(), sig.Results(), sig.Variadic())
-			text = strings.ReplaceAll(types.TypeString(plain, nil), "interface{}", "any")
+			plain := types.NewSignatureType(nil, nil, nil, unnamed(sig.Params()), unnamed(sig.Results()), sig.Variadic())
+			text = listSpelling(types.TypeString(plain, nil))
 		}
 		if text == e.sig {
 			return true
 		}
 	}
 	return false
+}
+
+// unnamed returns t's types as a tuple of unnamed variables, so TypeString
+// prints "func(error) bool" for "func(target error) bool".
+func unnamed(t *types.Tuple) *types.Tuple {
+	vars := make([]*types.Var, t.Len())
+	for i := range vars {
+		vars[i] = types.NewParam(0, nil, "", t.At(i).Type())
+	}
+	return types.NewTuple(vars...)
 }
