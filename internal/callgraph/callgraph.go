@@ -101,8 +101,9 @@ type node struct {
 type edge uint8
 
 const (
-	edgeDirect  edge = 1 << iota // static call or interface method call
-	edgeDynamic                  // call through a func value (callback, handler)
+	edgeDirect   edge = 1 << iota // static call or interface method call
+	edgeDynamic                   // call through a func value (callback, handler)
+	edgeImplicit                  // a method the standard library calls on an interface value converted here
 )
 
 type pos struct {
@@ -183,6 +184,9 @@ func Build(ctx context.Context, p *load.Program) (*Graph, error) {
 		}
 	}
 	for fn := range r.funcs {
+		x.implicitEdges(fn)
+	}
+	for fn := range r.funcs {
 		x.valueRefs(fn)
 	}
 	return x.g, nil
@@ -231,6 +235,43 @@ func edgeKind(e *gocg.Edge) edge {
 		return edgeDirect
 	}
 	return edgeDynamic
+}
+
+// implicitEdges adds an edgeImplicit from fn's node (closures count as
+// their outermost function's) to every library-called method with a module
+// body of each type fn converts to an interface: the standard library calls
+// them inside bodies the call graph never sees (errors.Is calls Unwrap,
+// net/http calls ServeHTTP).
+func (x *indexer) implicitEdges(fn *ssa.Function) {
+	owner := x.id(fn)
+	if owner == external {
+		return
+	}
+	for _, b := range fn.Blocks {
+		for _, instr := range b.Instrs {
+			mi, ok := instr.(*ssa.MakeInterface)
+			if !ok {
+				continue
+			}
+			mset := x.p.SSA.MethodSets.MethodSet(mi.X.Type())
+			for i := range mset.Len() {
+				obj, ok := mset.At(i).Obj().(*types.Func)
+				if !ok || !libraryCalled(obj) {
+					continue
+				}
+				// FuncValue of the declared method, not MethodValue: a
+				// value method reached through *T would be a wrapper; a
+				// generic type's method is found through its origin.
+				m := x.p.SSA.FuncValue(obj.Origin())
+				if m == nil {
+					continue
+				}
+				if id := x.id(m); id != external && id != owner {
+					x.g.in[id][owner] |= edgeImplicit
+				}
+			}
+		}
+	}
 }
 
 // valueRefs records every function fn uses as a value (passed, stored,
@@ -548,7 +589,7 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 		var next []item
 		for _, it := range frontier {
 			u := it.id
-			cs := g.callersOf(u, it.only)
+			cs := g.callersOf(u, it.only, false)
 			for _, c := range cs {
 				kind := Calls
 				switch {
@@ -577,6 +618,15 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 	}
 
 	pkgs := map[string]bool{}
+	// Test reach also follows implicit edges (a test that converts a type
+	// to an interface reaches the methods the standard library calls on
+	// it); Callers and TestCallers do not.
+	for id := range g.reach(target, true) {
+		if n := g.nodes[id]; id != target && n.testEntry {
+			im.TestReached = true
+			pkgs[n.pkg] = true
+		}
+	}
 	for id, d := range depthOf {
 		n := g.nodes[id]
 		if id == target {
@@ -616,9 +666,9 @@ func (g *Graph) Impact(file string, startLine, depth int) Impact {
 // callersOf returns the callers of u to walk on. With only >= 0 (u was
 // reached through a call of a func value) they are narrowed to the
 // registrants of node only, or those registrants themselves when no caller
-// is one.
-func (g *Graph) callersOf(u, only int) []callerEdge {
-	cs := g.callers(u)
+// is one. implicit also walks implicit edges (see callers).
+func (g *Graph) callersOf(u, only int, implicit bool) []callerEdge {
+	cs := g.callers(u, implicit)
 	if only < 0 {
 		return cs
 	}
@@ -656,8 +706,14 @@ func (c callerEdge) items(u int) []int {
 }
 
 // callers returns the non-synthetic direct callers of u, looking through
-// synthetic functions; a path through a dynamic call is dynamic.
-func (g *Graph) callers(u int) []callerEdge {
+// synthetic functions; a path through a dynamic call is dynamic. With
+// implicit, a function reaching u through an implicit edge (it converts
+// u's type to an interface) counts as a direct caller.
+func (g *Graph) callers(u int, implicit bool) []callerEdge {
+	bits := []edge{edgeDirect, edgeDynamic}
+	if implicit {
+		bits = append(bits, edgeImplicit)
+	}
 	kinds := map[int]edge{}
 	type state struct {
 		id  int
@@ -670,7 +726,7 @@ func (g *Graph) callers(u int) []callerEdge {
 			if c == u {
 				continue
 			}
-			for _, bit := range []edge{edgeDirect, edgeDynamic} {
+			for _, bit := range bits {
 				if ek&bit == 0 {
 					continue
 				}
@@ -878,25 +934,10 @@ func sortedKeys[V any](m map[int]V) []int {
 	return out
 }
 
-// Entry is a way into the program that reaches a function: Kind is "main",
-// "init", "api" or "registered"; Display the function, or for a registered
-// one the registration call.
-type Entry struct{ Kind, Display string }
-
-const maxEntries = 20
-
-// EntryPoints walks all callers of the function declared at file:startLine
-// (no depth limit, narrowing calls through func values as Impact does) and
-// returns the main and init functions, the functions api accepts, and the
-// registration sites of every function reached, the target included. Tests
-// never count. Sorted by kind (registered, api, main, init: the most
-// specific first) then Display, deduplicated, at most 20; nil when none or
-// the function is unknown.
-func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool) []Entry {
-	target, ok := g.byPos[pos{file, startLine}]
-	if !ok {
-		return nil
-	}
+// reach returns target and every function that reaches it through callers
+// (no depth limit, narrowing calls through func values as Impact does);
+// implicit also follows implicit edges.
+func (g *Graph) reach(target int, implicit bool) map[int]bool {
 	type item struct{ id, only int }
 	queued := map[item]bool{{target, -1}: true}
 	reached := map[int]bool{target: true}
@@ -904,7 +945,7 @@ func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool)
 	for len(frontier) > 0 {
 		var next []item
 		for _, it := range frontier {
-			for _, c := range g.callersOf(it.id, it.only) {
+			for _, c := range g.callersOf(it.id, it.only, implicit) {
 				reached[c.id] = true
 				for _, nx := range c.items(it.id) {
 					if n := (item{c.id, nx}); !queued[n] {
@@ -916,6 +957,30 @@ func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool)
 		}
 		frontier = next
 	}
+	return reached
+}
+
+// Entry is a way into the program that reaches a function: Kind is "main",
+// "init", "api" or "registered"; Display the function, or for a registered
+// one the registration call.
+type Entry struct{ Kind, Display string }
+
+const maxEntries = 20
+
+// EntryPoints walks all callers of the function declared at file:startLine
+// (no depth limit, narrowing calls through func values as Impact does, and
+// following implicit edges) and
+// returns the main and init functions, the functions api accepts, and the
+// registration sites of every function reached, the target included. Tests
+// never count. Sorted by kind (registered, api, main, init: the most
+// specific first) then Display, deduplicated, at most 20; nil when none or
+// the function is unknown.
+func (g *Graph) EntryPoints(file string, startLine int, api func(FuncInfo) bool) []Entry {
+	target, ok := g.byPos[pos{file, startLine}]
+	if !ok {
+		return nil
+	}
+	reached := g.reach(target, true)
 
 	seen := map[Entry]bool{}
 	var out []Entry

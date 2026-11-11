@@ -220,7 +220,7 @@ func Render(m Model) string {
 	b.WriteString("<details><summary>⚠️ Limits of this analysis</summary>\n\n")
 	b.WriteString("- Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.\n")
 	b.WriteString("- This repo only: callers in other services (HTTP/gRPC) are not visible.\n")
-	b.WriteString("- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.\n")
+	b.WriteString("- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers (methods the standard library calls on interface values, such as `Error`, `Unwrap` or `ServeHTTP`, count as reached from the code that converts their type to an interface; see the list in the reference); where such a function is registered is listed under Registered.\n")
 	b.WriteString("- Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.\n")
 	for _, s := range m.NotAnalyzed {
 		b.WriteString("- Not analyzed: " + s + "\n")

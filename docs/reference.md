@@ -291,6 +291,35 @@ In order, each section only when it has something:
 
 Callers through a func value (an event bus, a handler table) are narrowed to the code that registered the function; callers of a closure are not counted as callers of the function that created it. An exported signature change is red only in a package other modules can import.
 
+**Methods the standard library calls.** The standard library's own code is not analysed, so calls it makes (`errors.Is` calling `Unwrap`, `fmt` calling `String`, `net/http` calling `ServeHTTP`) are not seen. A method whose name and signature are exactly one of these is *library-called*:
+
+| Name | Signature |
+|---|---|
+| `Error` | `func() string` |
+| `String` | `func() string` |
+| `GoString` | `func() string` |
+| `Format` | `func(fmt.State, rune)` |
+| `Unwrap` | `func() error` |
+| `Unwrap` | `func() []error` |
+| `Is` | `func(error) bool` |
+| `As` | `func(any) bool` |
+| `MarshalJSON` | `func() ([]byte, error)` |
+| `UnmarshalJSON` | `func([]byte) error` |
+| `MarshalText` | `func() ([]byte, error)` |
+| `UnmarshalText` | `func([]byte) error` |
+| `MarshalBinary` | `func() ([]byte, error)` |
+| `UnmarshalBinary` | `func([]byte) error` |
+| `ServeHTTP` | `func(net/http.ResponseWriter, *net/http.Request)` |
+| `Len` | `func() int` |
+| `Less` | `func(int, int) bool` |
+| `Swap` | `func(int, int)` |
+| `Push` | `func(any)` |
+| `Pop` | `func() any` |
+| `Scan` | `func(any) error` |
+| `Value` | `func() (database/sql/driver.Value, error)` |
+
+A function of the module (its closures and tests included) that converts a value of type T to an interface reaches every library-called method in T's method set: converting `T` reaches only `T`'s value methods, converting `*T` reaches both, and a generic type's method is reached through any instantiation. This counts for test reach (the cover cell and tests in other packages), the Entry points column, and Now unused / now only used by tests. It never makes a caller: the Callers column, *All callers*, the diagram and the "untested with callers" rule ignore it.
+
 The **Entry points** column shows which entry points reach a changed function through any number of calls, the most specific first: the registration call that passes it as a value, as its route when it renders as one (e.g. `GET /trade/:id`, see Routes) or else its call text (e.g. `Subscribe("x", …)`), `api <function>` (an exported function of an importable package, or an exported method of an exported type there), `main` and `init` (several `init` or `main` functions are one `init` or `main`). The first two are shown, then ` +N`; `—` means none. Registrations and `api` functions render as code spans. With two or more rows, an entry point every shown row has (often `main`) is left out of the cells and stated once above the table: `All changes shown are reached from: …`. The column appears only when some shown row has an entry point, and never in a degraded run.
 
 **Routes.** A registration call renders as `VERB /joined/path` when its callee is a verb (case-insensitive `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, `TRACE`; `Any` renders `ANY /p`) and its first argument is a path literal: one starting with `/`, a method pattern (`"GET /x"`), or `""` under a resolved prefix that starts with `/`. Any other literal is not a route, so `HandleFunc("email:deliver", h)`, `Handle("user.created", h)` or `cache.Get("key", f)` keep their call text, and so does `r.GET("", h)` with no prefix resolved. `Handle`, `HandleFunc` and `Match` render the path alone (`/x`); a literal that already starts with a method (`"GET /x"`) is kept as written, and gin's `Handle("GET", "/x", h)` renders `GET /x`. Prefixes come from `Group`, `Route`, `PathPrefix` and `Prefix` calls with a string-literal first argument, followed up to 4 levels through local variables assigned once in the same function (a plain copy `h := g` is followed too and counts as a level), and are joined like `path.Join` (a trailing `/` is kept, `""` is the prefix itself, the root is `/`): `api := e.Group("/trade"); api.GET("/:id", h)` is `GET /trade/:id`. A package identifier (`http.HandleFunc`, `http.DefaultServeMux`) or a call result (`gin.Default()`, `newGroup()`) is a complete root. A parameter, a method receiver or a struct field (`c.router`) is a root whose outer prefixes were set elsewhere: the path starts with `…` (`func Register(g *gin.RouterGroup) { g.POST("/trade", h) }` is `POST …/trade`), and the prefixes resolved in that function follow it. Whenever a prefix cannot be resolved without guessing (a prefix that is not a string literal, a local assigned more than once, another method call in the chain such as `.Use(mw)`, more than 4 levels), the call text is shown instead.
@@ -301,7 +330,7 @@ The base revision is exported with `git archive` into a temporary directory and 
 
 - Calls via `reflect` or dynamic registration (e.g. handlers by name) are not detected.
 - This repo only: callers in other services (HTTP/gRPC) are not visible.
-- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers; where such a function is registered is listed under Registered.
+- Functions called only from dependencies (e.g. HTTP handlers registered with net/http) or from package-level initializers show no callers (methods the standard library calls on interface values, such as `Error`, `Unwrap` or `ServeHTTP`, count as reached from the code that converts their type to an interface; see the list in the reference); where such a function is registered is listed under Registered.
 - Now unused: uses through `reflect`, `//go:linkname`, files excluded by build tags or other repositories are not seen.
 - Cross-package coverage is judged by static reachability: a test in another package whose call graph reaches the function counts, even if at run time it takes another path.
 - Registrations blocks: only calls that take a function directly are compared; a function inside a slice literal (`[]HandlerFunc{…}...`) or a struct literal is not. Entry points and Registered do follow a slice literal that reaches exactly one call (the slice a variadic call builds).
