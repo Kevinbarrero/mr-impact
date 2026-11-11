@@ -1133,3 +1133,23 @@ func TestCompactPastRowCap(t *testing.T) {
 		seen[name] = true
 	}
 }
+
+func TestCompactNothingHidden(t *testing.T) {
+	out := Render(lfModel(compactRows(21, 0, 0)...))
+	if strings.Contains(out, "changed functions (") || strings.Contains(out, "<details><summary>0") {
+		t.Errorf("unexpected collapsed block:\n%s", out)
+	}
+	if n := tableRowCount(out); n != 21 {
+		t.Errorf("rows = %d, want 21", n)
+	}
+	if strings.Contains(out, "</summary>\n\n</details>") {
+		t.Error("empty details body")
+	}
+}
+
+func TestCompactNothingVisible(t *testing.T) {
+	out := Render(lfModel(compactRows(0, 0, 21)...))
+	if !strings.Contains(out, "<details><summary>21 changed functions (🟢 21)</summary>") {
+		t.Errorf("summary:\n%s", out)
+	}
+}

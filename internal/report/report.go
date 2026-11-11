@@ -418,7 +418,14 @@ func writeCompactTable(b *strings.Builder, funcs, visible, hidden []FuncRow) {
 	if red := len(funcs) - len(visible) - yellow - green; red > 0 {
 		parts = append([]string{fmt.Sprintf("🔴 %d", red)}, parts...)
 	}
-	fmt.Fprintf(b, "<details><summary>%d more changed functions (%s)</summary>\n\n", len(funcs)-len(visible), strings.Join(parts, " · "))
+	if len(funcs) == len(visible) { // nothing hidden: no collapsed block
+		return
+	}
+	more := "more "
+	if len(visible) == 0 { // nothing above the fold: the block is the whole table
+		more = ""
+	}
+	fmt.Fprintf(b, "<details><summary>%d %schanged functions (%s)</summary>\n\n", len(funcs)-len(visible), more, strings.Join(parts, " · "))
 	if len(hidden) > 0 {
 		writeRows(b, hidden, common, false)
 	}

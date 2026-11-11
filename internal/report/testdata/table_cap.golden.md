@@ -2,7 +2,7 @@
 ### 🔍 MR impact — 60 functions changed
 **🔴 0 · 🟡 0 · 🟢 60** · coverage: `static` · base `abcdef0`
 
-<details><summary>60 more changed functions (🟢 60)</summary>
+<details><summary>60 changed functions (🟢 60)</summary>
 
 | Risk | Function | Change | Callers | Added-line coverage |
 |---|---|---|---|---|
