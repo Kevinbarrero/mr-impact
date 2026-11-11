@@ -4,12 +4,12 @@
 
 🔌 **Registrations changed** (1, positions in head):
 
-- `GET /trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`
+- `GET …/trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
 | 🟡 | `api.Register` | body · wiring | 1 | api `api.Register`, main | 0 % (0/1) |
-| 🟡 | `svc.(*Service).Lookup` | body | 1 | `GET /trade/:id`, api `api.GetTrade` +1 | 40 % (2/5) |
+| 🟡 | `svc.(*Service).Lookup` | body | 1 | `GET …/trade/:id`, api `api.GetTrade` +1 | 40 % (2/5) |
 | 🟡 | `svc.NewService` | body · wiring | 1 | api `svc.NewService`, main | 0 % (0/1) |
 | 🟡 | `store.Check` | body · wiring | 0 | api `store.Check` | 0 % (0/1) |
 

@@ -397,7 +397,7 @@ func TestEntryPoints(t *testing.T) {
 	const dir = "testdata/entries"
 	got := g.EntryPoints("internal/svc/svc.go", lineOf(t, dir, "internal/svc/svc.go", "func helper"), apiPred)
 	want := []Entry{
-		{"registered", "/x"}, // mux.HandleFunc("/x", handle), rendered as its route
+		{"registered", "…/x"}, // mux.HandleFunc("/x", handle) on a parameter: a partial route
 		{"api", "api.Do"},
 		{"main", "main.main"},
 	}
@@ -454,7 +454,7 @@ func registeredAt(t *testing.T, fn string) []Site {
 func TestSite_Variadic(t *testing.T) {
 	got := registeredAt(t, "h")
 	line := lineOf(t, "testdata/entries", "internal/router/router.go", `g.POST("/x"`)
-	want := []Site{{File: "internal/router/router.go", Line: line, Call: "POST /x"}}
+	want := []Site{{File: "internal/router/router.go", Line: line, Call: "POST …/x"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Registered = %+v, want %+v", got, want)
 	}
@@ -464,7 +464,7 @@ func TestSite_Variadic(t *testing.T) {
 // resolve to the same call text.
 func TestSite_VariadicTwoModuleFuncs(t *testing.T) {
 	mw, h := registeredAt(t, "mw"), registeredAt(t, "h")
-	if len(mw) != 1 || len(h) != 1 || mw[0].Call != "POST /x" || mw[0].Text() != h[0].Text() {
+	if len(mw) != 1 || len(h) != 1 || mw[0].Call != "POST …/x" || mw[0].Text() != h[0].Text() {
 		t.Errorf("mw = %+v, h = %+v, want one equal non-empty call each", mw, h)
 	}
 }

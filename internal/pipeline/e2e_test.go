@@ -191,8 +191,8 @@ func checkRegistrationMiddleware(t *testing.T, m report.Model) {
 	}
 	out := report.Render(m)
 	for _, want := range []string{
-		"\n- `GET /trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`\n",
-		"| `svc.(*Service).Lookup` | body | 1 | `GET /trade/:id`,",
+		"\n- `GET …/trade/:id` → `api.GetTrade`: + `mw` — `api/api.go:21`\n",
+		"| `svc.(*Service).Lookup` | body | 1 | `GET …/trade/:id`,",
 		"\n- `svc.(*Service).Lookup` — `svc/svc.go:14-16`\n",
 	} {
 		if !strings.Contains(out, want) {
