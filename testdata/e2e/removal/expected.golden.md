@@ -1,6 +1,6 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 4 functions changed
-**🔴 0 · 🟡 3 · 🟢 1** · coverage: `static` · base `0000000`
+**🔴 0 · 🟡 4 · 🟢 0** · coverage: `static` · base `0000000`
 
 ↪️ **Removed `case`, value still exists** — these values now take another path (1):
 
@@ -41,10 +41,10 @@ All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Registered | Entry points | Added-line coverage |
 |---|---|---|---|---|---|---|
-| 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | `Subscribe("select", …)` | reached by test |
+| 🟡 | `svc.(*Svc).Select` | body (branch removed) | 2 (2 pkgs) | `Subscribe("select", …)` | `Subscribe("select", …)` | no added lines · reached by test |
+| 🟡 | `svc.Count` | signature (exported) | 1 |  | — | reached by test · added lines not measured |
 | 🟡 | `svc.NewOther` | body · wiring | 1 |  | — | not reached |
 | 🟡 | `main.main` | body · wiring | 0 |  | — | not reached |
-| 🟢 | `svc.Count` | signature (exported) | 1 |  | — | reached by test |
 
 ➖ Deleted: `svc.onHedge`, `svc.hedge`, `svc.Admin`
 
@@ -56,12 +56,12 @@ All changes shown are reached from: main
 flowchart RL
   n0["🟡 svc.(*Svc).Select"]:::yellow
   n1["svc.New"]
-  n2["🟡 svc.NewOther"]:::yellow
-  n3["🟡 main.main"]:::yellow
-  n4["🟢 svc.Count"]:::green
+  n2["🟡 svc.Count"]:::yellow
+  n3["🟡 svc.NewOther"]:::yellow
+  n4["🟡 main.main"]:::yellow
   n1 -. "registers via Subscribe" .-> n0
-  n3 --> n2
-  n3 --> n4
+  n4 --> n2
+  n4 --> n3
   subgraph legend ["Legend"]
     direction LR
     lr["🔴 changed, not tested"]:::red
@@ -82,11 +82,11 @@ flowchart RL
 - depth 1: `bus.(*Bus).Subscribe`
 - depth 2: `svc.New`
 
-**`svc.NewOther`** (1)
+**`svc.Count`** (1)
 
 - depth 1: `main.main`
 
-**`svc.Count`** (1)
+**`svc.NewOther`** (1)
 
 - depth 1: `main.main`
 
@@ -100,4 +100,4 @@ flowchart RL
 - Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact test · 0.0 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact test · 0.0 s</sub>

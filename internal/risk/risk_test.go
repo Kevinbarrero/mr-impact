@@ -123,7 +123,7 @@ func TestLevelEmoji(t *testing.T) {
 }
 
 func TestLegend(t *testing.T) {
-	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
+	const want = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 	if Legend != want {
 		t.Errorf("Legend = %q, want %q", Legend, want)
 	}
@@ -300,5 +300,56 @@ func TestAssess_SensitiveReachUnknown(t *testing.T) {
 	in.HasProfile, in.Total = true, 3
 	if !in.SensitiveUntested() || Assess(in) != Red {
 		t.Errorf("profile 0/3, reach unknown: want the rule to fire")
+	}
+}
+
+func TestRate_Reasons(t *testing.T) {
+	tests := []struct {
+		name   string
+		in     Input
+		level  Level
+		reason string
+	}{
+		{"signature", Input{Kind: symbols.Signature, Exported: true, Importable: true}, Red, "exported signature changed"},
+		{"sensitive", Input{Sensitive: true, AddedLines: 3, HasProfile: true, Total: 3, Covered: 0}, Red, "sensitive, untested"},
+		{"callers", Input{NonTestCallers: 12, HasProfile: true, Total: 4}, Red, "untested, 12 callers"},
+		{"one caller", Input{NonTestCallers: 1, HasProfile: true, Total: 4}, Red, "untested, 1 caller"},
+		{"wiring", Input{NonTestCallers: 2, Wiring: true, HasProfile: true, Total: 4}, Yellow, "wiring, untested"},
+		{"partial", Input{HasProfile: true, Covered: 2, Total: 5}, Yellow, "partly tested, 40 %"},
+		{"cross", Input{HasProfile: true, Total: 3, CrossPkgTestReached: true}, Yellow, "tested only from other packages"},
+		{"no callers", Input{HasProfile: true, Total: 3}, Yellow, "untested, no callers"},
+		{"unmeasured", Input{TestReached: true, AddedLines: 2}, Yellow, "added lines not measured"},
+		{"branch", Input{TestReached: true, BranchesRemoved: true, HasProfile: true}, Yellow, "branch removed"},
+		{"green", Input{TestReached: true}, Green, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Rate(tt.in)
+			if got.Level != tt.level || got.Reason != tt.reason {
+				t.Errorf("Rate = %+v, want %v %q", got, tt.level, tt.reason)
+			}
+			if Assess(tt.in) != got.Level {
+				t.Errorf("Assess != Rate.Level")
+			}
+		})
+	}
+}
+
+func TestRate_StaticRedRulesWin(t *testing.T) {
+	got := Rate(Input{NonTestCallers: 3, TestReached: false, AddedLines: 2})
+	if got.Level != Red || got.Reason != "untested, 3 callers" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+// A static run without a call graph keeps its rating and says nothing about
+// added lines.
+func TestRate_StaticUnknownReach(t *testing.T) {
+	got := Rate(Input{ReachUnknown: true, AddedLines: 2})
+	if got.Reason == "added lines not measured" {
+		t.Errorf("reason = %q", got.Reason)
+	}
+	if got.Level != Yellow {
+		t.Errorf("level = %v, want Yellow (today's value)", got.Level)
 	}
 }

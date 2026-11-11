@@ -316,7 +316,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		apis = touchedAPIs(sites, f.AddedLines, critical)
 		in.Sensitive = len(apis) > 0 || critical != ""
-		cover := coverText(prof != nil, in.Covered, in.Total, graph != nil, im.TestReached, cross, prog.ModulePath)
+		cover := coverText(prof != nil, in.Covered, in.Total, len(f.AddedLines), graph != nil, im.TestReached, cross, prog.ModulePath)
 		var entries []callgraph.Entry
 		if graph != nil {
 			entries = graph.EntryPoints(f.File, f.StartLine, entryRoot(prog))
@@ -327,7 +327,8 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 				callers1 = append(callers1, c.Display+"\x00"+c.Pkg)
 			}
 		}
-		level := risk.Assess(in)
+		r := risk.Rate(in)
+		level := r.Level
 		if in.Sensitive {
 			// Its own row, also when folded into a group later.
 			m.Sensitive = append(m.Sensitive, report.SensitiveRow{
@@ -337,7 +338,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 		}
 		rated = append(rated, ratedFunc{
 			Row: report.FuncRow{
-				Level: level, Display: f.Display, Kind: kindText(f, in.Sensitive),
+				Level: level, Reason: r.Reason, Display: f.Display, Kind: kindText(f, in.Sensitive),
 				Callers: im.Callers, CoverText: cover, Registered: im.Registered, Entries: entries, File: f.File, Uncovered: uncovered,
 			},
 			Key: f.Display + "\x00" + pkgPath, New: f.Kind == symbols.New, In: in,

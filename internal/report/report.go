@@ -35,6 +35,7 @@ const (
 // FuncRow is one changed function.
 type FuncRow struct {
 	Level      risk.Level
+	Reason     string // the rule that set Level ("untested, 3 callers"); empty for 🟢
 	Display    string
 	Kind       string // "new" | "body" | "signature" | "signature (exported)"
 	Callers    []callgraph.Caller

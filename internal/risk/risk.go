@@ -3,6 +3,8 @@
 package risk
 
 import (
+	"fmt"
+
 	"github.com/Kevinbarrero/mr-impact/internal/symbols"
 )
 
@@ -61,7 +63,7 @@ type Input struct {
 }
 
 // Legend explains the rating in the report footer.
-const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
+const Legend = "🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴"
 
 // SensitiveUntested reports the untested-sensitive rule: a sensitive
 // function with added lines that are 0/N (N > 0) with a profile, or that no
@@ -78,9 +80,21 @@ func (in Input) SensitiveUntested() bool {
 	return !in.ReachUnknown && !in.TestReached
 }
 
+// Result is a rating and the rule that set it.
+type Result struct {
+	Level  Level
+	Reason string // e.g. "untested, 3 callers"; empty for green
+}
+
 // Assess rates a changed function. It must not be called for symbols.Deleted,
 // which has no code left to rate; doing so panics.
 func Assess(in Input) Level {
+	return Rate(in).Level
+}
+
+// Rate rates a changed function and names the rule that decided. It panics
+// for symbols.Deleted like Assess.
+func Rate(in Input) Result {
 	if in.Kind == symbols.Deleted {
 		panic("risk.Assess: called with symbols.Deleted; deleted functions must not be rated")
 	}
@@ -99,21 +113,30 @@ func Assess(in Input) Level {
 
 	switch {
 	case in.Exported && in.Kind == symbols.Signature && in.Importable:
-		return Red // never capped by Wiring
+		return Result{Red, "exported signature changed"} // never capped by Wiring
 	case sensitiveUntested:
-		return Red // not softened by cross-package reach
+		return Result{Red, "sensitive, untested"} // not softened by cross-package reach
 	case untested && in.NonTestCallers >= 1:
 		if in.Wiring {
-			return Yellow
+			return Result{Yellow, "wiring, untested"}
 		}
-		return Red
+		noun := "callers"
+		if in.NonTestCallers == 1 {
+			noun = "caller"
+		}
+		return Result{Red, fmt.Sprintf("untested, %d %s", in.NonTestCallers, noun)}
 	case partial:
-		return Yellow
+		if in.CrossPkgTestReached && in.Covered == 0 {
+			return Result{Yellow, "tested only from other packages"}
+		}
+		return Result{Yellow, fmt.Sprintf("partly tested, %d %%", in.Covered*100/in.Total)}
 	case untested && in.NonTestCallers == 0:
-		return Yellow
+		return Result{Yellow, "untested, no callers"}
+	case !in.HasProfile && !in.ReachUnknown && in.TestReached && in.AddedLines > 0:
+		return Result{Yellow, "added lines not measured"}
 	case in.BranchesRemoved:
-		return Yellow
+		return Result{Yellow, "branch removed"}
 	default:
-		return Green
+		return Result{Green, ""}
 	}
 }

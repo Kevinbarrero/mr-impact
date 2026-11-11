@@ -142,6 +142,7 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 		f := fs[m]
 		in.Covered += f.In.Covered
 		in.Total += f.In.Total
+		in.AddedLines += f.In.AddedLines
 		in.TestReached = in.TestReached || f.In.TestReached
 		in.Wiring = in.Wiring && f.In.Wiring
 		cross = cross || f.In.CrossPkgTestReached
@@ -164,15 +165,17 @@ func groupRow(entry ratedFunc, fs []ratedFunc, members []int, mod string) report
 			row.Members[i].Uncovered = nil
 		}
 	}
-	row.Level = risk.Assess(in)
+	r := risk.Rate(in)
+	row.Level, row.Reason = r.Level, r.Reason
 	if entry.Row.Level == risk.Red {
 		row.Level = risk.Red // covered members never launder an untested entry
+		row.Reason = entry.Row.Reason
 	}
 	row.Kind = fmt.Sprintf("new · +%d", len(members))
 	if entry.In.Sensitive {
 		row.Kind += " · sensitive"
 	}
-	row.CoverText = coverText(in.HasProfile, in.Covered, in.Total, true, in.TestReached, crossPkgs, mod)
+	row.CoverText = coverText(in.HasProfile, in.Covered, in.Total, in.AddedLines, true, in.TestReached, crossPkgs, mod)
 	if untested > 0 {
 		row.CoverText += fmt.Sprintf(" · %d untested", untested)
 	}

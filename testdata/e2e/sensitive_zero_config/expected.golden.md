@@ -1,25 +1,25 @@
 <!-- mrimpact:v1 -->
 ### 🔍 MR impact — 3 functions changed
-**🔴 1 · 🟡 1 · 🟢 1** · coverage: `static` · base `0000000`
+**🔴 1 · 🟡 2 · 🟢 0** · coverage: `static` · base `0000000`
 
 🔐 **Sensitive code changed** (2):
 
 - 🔴 `run.Exec` — os/exec.Command, os/exec.(*Cmd).Run · not reached
-- 🟢 `store.Save` — database/sql.(*DB).ExecContext · reached by test
+- 🟡 `store.Save` — database/sql.(*DB).ExecContext · reached by test · added lines not measured
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
 | 🔴 | `run.Exec` | new · sensitive | 0 | api `run.Exec` | not reached |
+| 🟡 | `store.Save` | body · sensitive | 0 | api `store.Save` | reached by test · added lines not measured |
 | 🟡 | `util.Label` | body | 0 | api `util.Label` | not reached |
-| 🟢 | `store.Save` | body · sensitive | 0 | api `store.Save` | reached by test |
 
 **How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.
 
 ```mermaid
 flowchart RL
   n0["🔴 run.Exec"]:::red
-  n1["🟡 util.Label"]:::yellow
-  n2["🟢 store.Save"]:::green
+  n1["🟡 store.Save"]:::yellow
+  n2["🟡 util.Label"]:::yellow
   subgraph legend ["Legend"]
     direction LR
     lr["🔴 changed, not tested"]:::red
@@ -44,4 +44,4 @@ flowchart RL
 - Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, or a branch removed · 🟢 covered (no added lines: reached by a test) · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact test · 0.0 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact test · 0.0 s</sub>

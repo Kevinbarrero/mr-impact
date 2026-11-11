@@ -21,7 +21,7 @@ func crossPkgTests(fnPkg string, testPkgs []string) []string {
 // coverText is the "Added-line coverage" cell. crossPkgs are the packages of
 // tests (other than the function's own) that reach it; they only matter when
 // the profile shows added lines and none covered.
-func coverText(prof bool, covered, total int, graph bool, testReached bool, crossPkgs []string, mod string) string {
+func coverText(prof bool, covered, total, added int, graph bool, testReached bool, crossPkgs []string, mod string) string {
 	switch {
 	case prof:
 		switch {
@@ -38,8 +38,10 @@ func coverText(prof bool, covered, total int, graph bool, testReached bool, cros
 		}
 	case !graph:
 		return "n/a"
+	case testReached && added > 0:
+		return "reached by test · added lines not measured"
 	case testReached:
-		return "reached by test"
+		return "no added lines · reached by test"
 	default:
 		return "not reached"
 	}

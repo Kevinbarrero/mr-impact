@@ -16,8 +16,8 @@ func rf(display string, cov, total int, callers ...string) ratedFunc {
 	in := risk.Input{Kind: symbols.New, NonTestCallers: len(callers), HasProfile: true, Covered: cov, Total: total}
 	f := ratedFunc{
 		Row: report.FuncRow{
-			Level: risk.Assess(in), Display: display, Kind: "new",
-			CoverText: coverText(true, cov, total, true, false, nil, "m"),
+			Level: risk.Rate(in).Level, Reason: risk.Rate(in).Reason, Display: display, Kind: "new",
+			CoverText: coverText(true, cov, total, 0, true, false, nil, "m"),
 		},
 		Key: display + "\x00m/p", New: true, In: in,
 	}
@@ -30,7 +30,7 @@ func rf(display string, cov, total int, callers ...string) ratedFunc {
 
 // reassess re-rates f after a test changed its Input.
 func reassess(f ratedFunc) ratedFunc {
-	f.Row.Level = risk.Assess(f.In)
+	f.Row.Level, f.Row.Reason = risk.Rate(f.In).Level, risk.Rate(f.In).Reason
 	return f
 }
 
@@ -189,6 +189,18 @@ func TestGroup_RedEntryStaysRed(t *testing.T) {
 	if rows[0].Level != risk.Red {
 		t.Errorf("group level = %v, want red", rows[0].Level)
 	}
+	if rows[0].Reason != a.Row.Reason || rows[0].Reason != "untested, 1 caller" {
+		t.Errorf("group reason = %q, want the entry's %q", rows[0].Reason, a.Row.Reason)
+	}
+}
+
+// A group that is not forced red carries the reason of its own rating.
+func TestGroup_ReasonIsOwnWhenEntryNotRed(t *testing.T) {
+	a := rf("p.A", 1, 4, "p.Old")
+	rows, _, _ := group([]ratedFunc{a, rf("p.h", 1, 4, "p.A")}, "m")
+	if len(rows) != 1 || rows[0].Level != risk.Yellow || rows[0].Reason != "partly tested, 25 %" {
+		t.Errorf("rows = %+v, want yellow partly tested, 25 %%", rows)
+	}
 }
 
 // A red function claims the members it reaches, like any entry.
@@ -240,7 +252,7 @@ func TestGroup_NoProfileReachedByAny(t *testing.T) {
 	h.In.TestReached = true
 	a, h = reassess(a), reassess(h)
 	rows, _, _ := group([]ratedFunc{a, h}, "m")
-	if rows[0].CoverText != "reached by test" {
+	if rows[0].CoverText != "no added lines · reached by test" {
 		t.Errorf("cover = %q", rows[0].CoverText)
 	}
 }
