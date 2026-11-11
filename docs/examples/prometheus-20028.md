@@ -20,7 +20,7 @@ Tests: Not run: prometheus's `go test ./...` takes well over five minutes, so th
 
 ## What a reviewer learns
 
-The PR adds query-cost endpoints to the HTTP API. The note lists the new routes registered through `wrapAgent` (`queryCost` and `queryRangeCost`, two registrations each), the one 🔴 row (`v1.NewAPI`, an exported constructor of an importable package, gained two parameters, which breaks projects that build the API themselves), and an inferred architecture hint with the coupling of `web/api/v1`. **One misfire, kept as it came out:** the two "Registrations removed, no replacement" lines are wrong. The `NewAPI(…)` call in `web/web.go` still passes `h.runtimeInfo` and `h.testReady`; it only got two more arguments, so its text changed and the same registrations show as removed and added. Fixed in Unreleased: it now shows under "Registrations changed".
+The PR adds query-cost endpoints to the HTTP API. The note lists the new routes registered through `wrapAgent` (`queryCost` and `queryRangeCost`, two registrations each), the one 🔴 row (`v1.NewAPI`, an exported constructor of an importable package, gained two parameters, which breaks projects that build the API themselves), and an inferred architecture hint with the coupling of `web/api/v1`. **One misfire, kept as it came out:** the two "Registrations removed, no replacement" lines are wrong. The `NewAPI(…)` call in `web/web.go` still passes `h.runtimeInfo` and `h.testReady`; it only got two more arguments, so its text changed and the same registrations show as removed and added. Fixed in v0.3.2: it now shows under "Registrations changed".
 
 ## The note
 

@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-11-11
+
 ### Added
 
 - **Routes:** registration calls render as the route they register (`GET /trade/:id`), with `Group`/`Route`/`PathPrefix`/`Prefix` prefixes followed through locals of the same function (a router taken from a parameter, receiver or field starts the path with `…`, as in `POST …/trade`: its outer prefixes are set elsewhere), in the Entry points column and every registration block; only path literals (`/x`, `"GET /x"`, `""` under a `/` prefix) render, and anything ambiguous keeps the call text.
