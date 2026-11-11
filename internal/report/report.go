@@ -324,6 +324,10 @@ func writeWorkspaceNote(b *strings.Builder, w *WorkspaceNote) {
 		b.WriteString("📦 go.work: " + w.Path + " (unreadable)\n\n")
 		return
 	}
+	if len(w.Modules) == 0 { // go.work uses only the analysed module
+		b.WriteString("📦 go.work: `" + w.Path + "` (no other modules) — base built from go.mod\n\n")
+		return
+	}
 	var parts []string
 	for i, m := range w.Modules {
 		if i == maxWorkspaceModules {

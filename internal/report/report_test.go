@@ -1215,6 +1215,7 @@ func TestWorkspaceLine(t *testing.T) {
 		{"seven", &WorkspaceNote{Path: "go.work", Modules: seven},
 			"📦 go.work: `example.com/m1` from `../m1` (go.mod requires v1.0.0) · `example.com/m2` from `../m2` (go.mod requires v1.0.0) · `example.com/m3` from `../m3` (go.mod requires v1.0.0) · `example.com/m4` from `../m4` (go.mod requires v1.0.0) · `example.com/m5` from `../m5` (go.mod requires v1.0.0) +2 — base built from go.mod"},
 		{"unreadable", &WorkspaceNote{Path: "go.work", Unreadable: true}, "📦 go.work: go.work (unreadable)"},
+		{"no other modules", &WorkspaceNote{Path: "go.work"}, "📦 go.work: `go.work` (no other modules) — base built from go.mod"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
