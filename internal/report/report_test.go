@@ -1103,6 +1103,43 @@ func TestCompact(t *testing.T) {
 	}
 }
 
+// TestUnmeasuredRanksLast (I2): within a level, "added lines not measured"
+// rows give way to every other reason in the compact layout's visible 🟡
+// rows and in Look at first; the table keeps its order.
+func TestUnmeasuredRanksLast(t *testing.T) {
+	var rows []FuncRow
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("yel.U%02d", i)
+		rows = append(rows, FuncRow{Level: risk.Yellow, Display: name, Kind: "body", CoverText: "reached by test · added lines not measured",
+			Reason: "added lines not measured", Callers: callers("c", name, 5)})
+	}
+	rows = append(rows, FuncRow{Level: risk.Yellow, Display: "yel.BR", Kind: "body (branch removed)", CoverText: "n/a",
+		Reason: "branch removed", Callers: callers("c", "yel.BR", 1)})
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("grn.F%02d", i)
+		rows = append(rows, FuncRow{Level: risk.Green, Display: name, Kind: "body", CoverText: "n/a", Callers: callers("c", name, 3)})
+	}
+	out := Render(lfModel(rows...))
+	want := "👉 **Look at first:** `yel.BR` (branch removed) · `yel.U00` (added lines not measured) · `yel.U01` (added lines not measured) +8"
+	if got := lookLine(out); got != want {
+		t.Errorf("look first:\n got %q\nwant %q", got, want)
+	}
+	fold := strings.Index(out, "<details><summary>11 more changed functions (🟡 1 · 🟢 10)</summary>")
+	if fold < 0 {
+		t.Fatalf("missing collapsed summary:\n%s", out)
+	}
+	if !strings.Contains(out[:fold], "| 🟡 | `yel.BR` |") {
+		t.Errorf("branch-removed row must be visible:\n%s", out)
+	}
+	if !strings.Contains(out[fold:], "| 🟡 | `yel.U09` |") {
+		t.Errorf("the last unmeasured row must be collapsed:\n%s", out)
+	}
+	// Table order is kept: the visible table lists U00..U08 before BR.
+	if a, b := strings.Index(out, "| 🟡 | `yel.U08` |"), strings.Index(out, "| 🟡 | `yel.BR` |"); a < 0 || a > b {
+		t.Errorf("visible table must keep table order (U08 at %d, BR at %d)", a, b)
+	}
+}
+
 func TestCompactPastRowCap(t *testing.T) {
 	out := Render(lfModel(compactRows(5, 40, 15)...))
 	want := "<details><summary>45 more changed functions (🟡 30 · 🟢 15)</summary>"

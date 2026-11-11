@@ -415,19 +415,57 @@ func writeRows(b *strings.Builder, rows []FuncRow, given []string, stated bool) 
 	return common
 }
 
+// reasonUnmeasured is the reason of the "added lines not measured" rule. In
+// a static run it can rate most rows 🟡, so within a level its rows rank
+// after every other reason when the compact layout picks the visible 🟡
+// rows and when Look at first picks its rows; the table keeps its order.
+const reasonUnmeasured = "added lines not measured"
+
+// demoteUnmeasured returns rows reordered so that, within each run of
+// rows of one level, the reasonUnmeasured rows follow the others; each
+// part keeps its order.
+func demoteUnmeasured(rows []FuncRow) []FuncRow {
+	out := make([]FuncRow, 0, len(rows))
+	for i := 0; i < len(rows); {
+		j := i
+		for j < len(rows) && rows[j].Level == rows[i].Level {
+			j++
+		}
+		var later []FuncRow
+		for _, f := range rows[i:j] {
+			if f.Reason == reasonUnmeasured {
+				later = append(later, f)
+			} else {
+				out = append(out, f)
+			}
+		}
+		out = append(out, later...)
+		i = j
+	}
+	return out
+}
+
 // splitCompact splits the table's rows (the first maxTableRows of funcs, in
-// order) for the compact layout: visible is every red row then the first
-// compactYellow yellow ones; hidden is the rest, in order.
+// order) for the compact layout: visible is every red row and compactYellow
+// yellow ones (the first in table order, reasonUnmeasured rows last); hidden
+// is the rest. Both keep table order.
 func splitCompact(funcs []FuncRow) (visible, hidden []FuncRow) {
-	yellow := 0
-	for _, f := range funcs[:min(maxTableRows, len(funcs))] {
-		switch {
-		case f.Level == risk.Red:
+	table := funcs[:min(maxTableRows, len(funcs))]
+	shown := map[int]bool{}
+	for _, unmeasured := range []bool{false, true} {
+		for i, f := range table {
+			if len(shown) == compactYellow {
+				break
+			}
+			if f.Level == risk.Yellow && (f.Reason == reasonUnmeasured) == unmeasured {
+				shown[i] = true
+			}
+		}
+	}
+	for i, f := range table {
+		if f.Level == risk.Red || shown[i] {
 			visible = append(visible, f)
-		case f.Level == risk.Yellow && yellow < compactYellow:
-			yellow++
-			visible = append(visible, f)
-		default:
+		} else {
 			hidden = append(hidden, f)
 		}
 	}
@@ -489,11 +527,12 @@ func writeCompactTable(b *strings.Builder, funcs, visible, hidden []FuncRow) {
 }
 
 // writeLookFirst names the first lookFirstN red or yellow rows in table
-// order, with the rule that rated each, and counts the rest.
+// order (within a level, reasonUnmeasured rows last), with the rule that
+// rated each, and counts the rest.
 func writeLookFirst(b *strings.Builder, funcs []FuncRow) {
 	var items []string
 	n := 0
-	for _, f := range funcs {
+	for _, f := range demoteUnmeasured(funcs) {
 		if f.Level == risk.Green {
 			continue
 		}
