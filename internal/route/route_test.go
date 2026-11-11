@@ -92,6 +92,8 @@ func TestRender(t *testing.T) {
 		{"AliasKeepsPrefix", `func setup(r *R) { g := r.Group("/a"); h2 := g; h2.GET("/x", h) }`, "GET", "GET /a/x", true},
 		{"AliasCountsTowardCap", `func setup(r *R) { a := r.Group("/1"); b := a.Group("/2"); c := b.Group("/3"); d := c.Group("/4"); e := d; e.GET("/x", h) }`, "GET", "", false},
 		{"AliasOfTwiceAssignedFallsBack", `func setup(r *R) { g := r.Group("/a"); g = r.Group("/b"); h2 := g; h2.GET("/x", h) }`, "GET", "", false},
+		{"ChiRouteThreeLevels", `func setup(r chi.Router) { r.Route("/a", func(r chi.Router) { r.Route("/b", func(r chi.Router) { r.Route("/c", func(r chi.Router) { r.Get("/x", h) }) }) }) }`, "Get", "GET /a/b/c/x", true},
+		{"ChiRouteTwoLevelsThenAlias", `func setup(r chi.Router) { r.Route("/a", func(r chi.Router) { r.Route("/b", func(q chi.Router) { s := q; s.Get("/x", h) }) }) }`, "Get", "GET /a/b/x", true},
 		{"FourLevels", `func setup(r *R) { a := r.Group("/1"); b := a.Group("/2"); c := b.Group("/3"); d := c.Group("/4"); d.GET("/x", h) }`, "GET", "GET /1/2/3/4/x", true},
 	}
 	for _, c := range cases {

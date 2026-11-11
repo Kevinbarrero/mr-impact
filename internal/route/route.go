@@ -229,7 +229,9 @@ func (r resolver) prefixes(e ast.Expr, limit int) ([]string, bool) {
 			if root {
 				return reverse(rev), len(rev)+aliases <= maxPrefixes
 			}
-			if _, alias := next.expr.(*ast.Ident); alias {
+			// A Route closure parameter already counted its prefix; only a
+			// plain "h := g" step (no prefix added) counts as an alias.
+			if _, alias := next.expr.(*ast.Ident); alias && add == nil {
 				aliases++
 			}
 			e = next.expr
