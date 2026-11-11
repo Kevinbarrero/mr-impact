@@ -171,10 +171,10 @@ func TestFind_RouteAndChanged(t *testing.T) {
 		routes = append(routes, r.Route+" -> "+r.Handler)
 	}
 	wantRoutes := strings.Join([]string{
-		"GET /trade/:id -> trade.(*controller).getStatus",
-		"GET /trade/:id -> trade.(*controller).signatureMiddleware",
-		"POST /trade -> trade.(*controller).create",
-		"GET /trade/all -> trade.(*controller).list",
+		"GET …/trade/:id -> trade.(*controller).getStatus",
+		"GET …/trade/:id -> trade.(*controller).signatureMiddleware",
+		"POST …/trade -> trade.(*controller).create",
+		"GET …/trade/all -> trade.(*controller).list",
 	}, "\n")
 	if got := strings.Join(routes, "\n"); got != wantRoutes {
 		t.Errorf("head routes =\n%s\nwant\n%s", got, wantRoutes)
@@ -184,8 +184,8 @@ func TestFind_RouteAndChanged(t *testing.T) {
 	for _, c := range changed {
 		got = append(got, c.To.Route+" "+c.To.Handler+" +"+strings.Join(c.Added, ",")+" -"+strings.Join(c.Removed, ","))
 	}
-	want := "GET /trade/:id trade.(*controller).getStatus +c.signatureMiddleware -\n" +
-		"POST /trade trade.(*controller).create +c.limit -c.auth"
+	want := "GET …/trade/:id trade.(*controller).getStatus +c.signatureMiddleware -\n" +
+		"POST …/trade trade.(*controller).create +c.limit -c.auth"
 	if g := strings.Join(got, "\n"); g != want {
 		t.Errorf("changed =\n%s\nwant\n%s", g, want)
 	}
@@ -210,8 +210,8 @@ func TestCompare_CrossRegistrationsOfOneCall(t *testing.T) {
 	for _, r := range rewired {
 		got = append(got, r.To.Route+" "+r.From.Handler+" -> "+r.To.Handler)
 	}
-	want := "GET /trade/x trade.(*controller).mwA -> trade.(*controller).mwB\n" +
-		"GET /trade/y trade.(*controller).h -> trade.(*controller).h2"
+	want := "GET …/trade/x trade.(*controller).mwA -> trade.(*controller).mwB\n" +
+		"GET …/trade/y trade.(*controller).h -> trade.(*controller).h2"
 	if g := strings.Join(got, "\n"); g != want {
 		t.Errorf("rewired =\n%s\nwant\n%s", g, want)
 	}
@@ -252,8 +252,8 @@ func TestFind_PackageLevelFuncLitIsItsOwnScope(t *testing.T) {
 	for _, r := range find(t, "testdata/pkglevel") {
 		got = append(got, r.Route)
 	}
-	if g := strings.Join(got, ","); g != "GET /a/q,GET /b/q" {
-		t.Errorf("routes = %q, want GET /a/q,GET /b/q", g)
+	if g := strings.Join(got, ","); g != "GET …/a/q,GET …/b/q" {
+		t.Errorf("routes = %q, want GET …/a/q,GET …/b/q", g)
 	}
 }
 
@@ -264,7 +264,7 @@ func TestCompare_RouteMovedNotPaired(t *testing.T) {
 	if len(changed) != 0 {
 		t.Errorf("changed = %+v, want none", changed)
 	}
-	if len(gone) != 1 || gone[0].Route != "GET /admin/x" || len(fresh) != 1 || fresh[0].Route != "GET /public/x" {
+	if len(gone) != 1 || gone[0].Route != "GET …/admin/x" || len(fresh) != 1 || fresh[0].Route != "GET …/public/x" {
 		t.Errorf("gone=%+v fresh=%+v", gone, fresh)
 	}
 }
