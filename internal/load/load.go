@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -156,6 +157,9 @@ func Syntax(ctx context.Context, dir string, tags []string) ([]*packages.Package
 		return nil, nil, fmt.Errorf("load: %w", err)
 	}
 	cfg := &packages.Config{Context: ctx, Mode: mode, Dir: abs}
+	// The base revision is always built from its go.mod, never from a
+	// go.work that happens to sit above the directory it was exported to.
+	cfg.Env = append(os.Environ(), "GOWORK=off")
 	if len(tags) > 0 {
 		cfg.BuildFlags = []string{"-tags=" + strings.Join(tags, ",")}
 	}

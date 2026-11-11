@@ -195,3 +195,26 @@ func TestProgram_FuncDecl(t *testing.T) {
 		t.Error("test file: ok = true")
 	}
 }
+
+func TestSyntaxIgnoresGoWork(t *testing.T) {
+	root := writeModule(t, map[string]string{
+		"go.work":      "go 1.26.0\n\nuse ./other\n",
+		"other/go.mod": "module example.com/other\n\ngo 1.26.0\n",
+		"other/o.go":   "package other\n",
+		"mod/go.mod":   goMod,
+		"mod/m.go":     "package m\n\nfunc F() int { return 1 }\n",
+	})
+	t.Setenv("GOWORK", "")
+	pkgs, _, err := Syntax(context.Background(), filepath.Join(root, "mod"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pkgs {
+		if len(p.Errors) > 0 {
+			t.Errorf("%s: %v", p.PkgPath, p.Errors)
+		}
+	}
+	if len(pkgs) == 0 {
+		t.Fatal("no packages")
+	}
+}

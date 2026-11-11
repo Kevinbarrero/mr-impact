@@ -110,7 +110,7 @@ func run(ctx context.Context, cfg Config) (report.Model, error) {
 	case !errors.Is(err, diff.ErrNoMergeBase):
 		return report.Model{}, err
 	}
-	m := report.Model{BaseSHA: baseSHA, Coverage: "static", Config: configNote(ctx, cfg, baseSHA)}
+	m := report.Model{BaseSHA: baseSHA, Coverage: "static", Config: configNote(ctx, cfg, baseSHA), Workspace: workspaceNote(ctx, cfg.Dir)}
 
 	// 2. Diff.
 	changes, err := diff.Run(ctx, cfg.Dir, baseSHA, head)

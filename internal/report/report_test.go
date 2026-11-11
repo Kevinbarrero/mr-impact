@@ -1153,3 +1153,48 @@ func TestCompactNothingVisible(t *testing.T) {
 		t.Errorf("summary:\n%s", out)
 	}
 }
+
+func TestWorkspaceLine(t *testing.T) {
+	base := Model{Coverage: "static", BaseSHA: "abcdef0", Version: "v0.1.0", Duration: time.Second,
+		Funcs: []FuncRow{{Level: risk.Yellow, Display: "x.A", Kind: "body", CoverText: "n/a"}}}
+	mod := func(n int) WorkspaceModule {
+		return WorkspaceModule{Path: fmt.Sprintf("example.com/m%d", n), Dir: fmt.Sprintf("../m%d", n), Required: "v1.0.0"}
+	}
+	var seven []WorkspaceModule
+	for i := 1; i <= 7; i++ {
+		seven = append(seven, mod(i))
+	}
+	cases := []struct {
+		name string
+		ws   *WorkspaceNote
+		want string
+	}{
+		{"two", &WorkspaceNote{Path: "go.work", Modules: []WorkspaceModule{
+			{Path: "example.com/lib", Dir: "lib", Replace: "./lib"},
+			{Path: "example.com/patterns", Dir: "../patterns", Required: "v0.1.5"}}},
+			"📦 go.work: `example.com/lib` from `lib` (go.mod replaces → ./lib) · `example.com/patterns` from `../patterns` (go.mod requires v0.1.5) — base built from go.mod"},
+		{"not required", &WorkspaceNote{Path: "go.work", Modules: []WorkspaceModule{{Path: "example.com/lib", Dir: "../lib"}}},
+			"📦 go.work: `example.com/lib` from `../lib` (not required) — base built from go.mod"},
+		{"seven", &WorkspaceNote{Path: "go.work", Modules: seven},
+			"📦 go.work: `example.com/m1` from `../m1` (go.mod requires v1.0.0) · `example.com/m2` from `../m2` (go.mod requires v1.0.0) · `example.com/m3` from `../m3` (go.mod requires v1.0.0) · `example.com/m4` from `../m4` (go.mod requires v1.0.0) · `example.com/m5` from `../m5` (go.mod requires v1.0.0) +2 — base built from go.mod"},
+		{"unreadable", &WorkspaceNote{Path: "go.work", Unreadable: true}, "📦 go.work: go.work (unreadable)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := base
+			m.Workspace = c.ws
+			out := Render(m)
+			if !strings.Contains(out, "👉 **Look at first:** `x.A`\n\n"+c.want+"\n\n") {
+				t.Errorf("want %q right after Look at first in\n%s", c.want, out)
+			}
+			m.Config = &ConfigNote{File: ".mrimpact.yml"}
+			out = Render(m)
+			if !strings.Contains(out, "⚙️ .mrimpact.yml: defaults\n\n"+c.want+"\n\n") {
+				t.Errorf("want %q after the config line in\n%s", c.want, out)
+			}
+		})
+	}
+	if out := Render(base); strings.Contains(out, "📦") {
+		t.Errorf("unexpected 📦 line:\n%s", out)
+	}
+}

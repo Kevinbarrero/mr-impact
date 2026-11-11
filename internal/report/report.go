@@ -97,11 +97,27 @@ type ConfigNote struct {
 	Changes                 []config.Change
 }
 
+// WorkspaceNote is the go.work the head was loaded with.
+type WorkspaceNote struct {
+	Path       string // the go.work path, relative to --dir when below or beside it
+	Unreadable bool
+	Modules    []WorkspaceModule // sorted by Path; the analysed module excluded
+}
+
+// WorkspaceModule is one other module of the workspace.
+type WorkspaceModule struct {
+	Path     string // module path
+	Dir      string // relative to --dir, slash-separated, cleaned ("../go-patterns")
+	Required string // version go.mod requires; "" = not required
+	Replace  string // go.mod replace target for Path; "" = none
+}
+
 // Model is everything the note shows.
 type Model struct {
 	Funcs        []FuncRow          // unsorted; Render sorts by Level desc, len(Callers) desc, Display
 	Sensitive    []SensitiveRow     // unsorted; Render lists untested first, then by Display
 	Config       *ConfigNote        // nil: nothing to say about the config file
+	Workspace    *WorkspaceNote     // nil: no go.work in effect
 	Arch         *arch.Result       // nil: no architecture analysis (e.g. an early failure)
 	RemovedCases []RemovedCase      // behaviour changes: first in the note
 	Unused       []callgraph.Unused // functions this MR left without callers
@@ -181,6 +197,7 @@ func Render(m Model) string {
 	b.WriteString("\n\n")
 	writeLookFirst(&b, funcs)
 	writeConfigNote(&b, m.Config)
+	writeWorkspaceNote(&b, m.Workspace)
 
 	if m.CrossPkgOnly > 0 {
 		fmt.Fprintf(&b, "ℹ️ %d functions are covered only by tests in other packages; if the coverprofile was made without -coverpkg it counts same-package tests only. Run `go test -coverpkg=./... -coverprofile=…` for line coverage.\n\n", m.CrossPkgOnly)
@@ -292,6 +309,40 @@ func writeConfigNote(b *strings.Builder, c *ConfigNote) {
 		}
 	}
 	b.WriteString("\n\n")
+}
+
+// maxWorkspaceModules caps the modules the 📦 line names.
+const maxWorkspaceModules = 5
+
+// writeWorkspaceNote writes the one go.work line: the other workspace modules
+// the head was built against, and that the base is built from go.mod.
+func writeWorkspaceNote(b *strings.Builder, w *WorkspaceNote) {
+	if w == nil {
+		return
+	}
+	if w.Unreadable {
+		b.WriteString("📦 go.work: " + w.Path + " (unreadable)\n\n")
+		return
+	}
+	var parts []string
+	for i, m := range w.Modules {
+		if i == maxWorkspaceModules {
+			break
+		}
+		state := "not required"
+		switch {
+		case m.Replace != "":
+			state = "go.mod replaces → " + m.Replace
+		case m.Required != "":
+			state = "go.mod requires " + m.Required
+		}
+		parts = append(parts, "`"+m.Path+"` from `"+m.Dir+"` ("+state+")")
+	}
+	b.WriteString("📦 go.work: " + strings.Join(parts, " · "))
+	if n := len(w.Modules) - maxWorkspaceModules; n > 0 {
+		fmt.Fprintf(b, " +%d", n)
+	}
+	b.WriteString(" — base built from go.mod\n\n")
 }
 
 // codeJoin renders items as comma-separated code spans.
