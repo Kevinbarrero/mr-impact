@@ -12,7 +12,7 @@
 
 ## A real note
 
-This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb160f5 --no-post`, no coverprofile, so test reach is static); the coverage cells and ratings are updated to the current rules, which rate a function with added lines as at most 🟡 until a coverprofile measures them:
+This is the note mrimpact v0.4.0 writes for its own GitHub support (`mrimpact --base fb160f5 --no-post` on that change, no coverprofile, so test reach is static and functions with added lines are at most 🟡 until a coverprofile measures them), unedited:
 
 <details>
 <summary>mrimpact on its own change: 15 functions changed, 🔴 0 · 🟡 9 · 🟢 0</summary>
@@ -24,22 +24,23 @@ This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb1
 
 👉 **Look at first:** `main.run` (branch removed) · `main.appendSummary` (added lines not measured) · `main.detectCI` (added lines not measured) +6
 
-🔐 **Sensitive code changed** (3):
+🔐 **Sensitive code changed** (2):
 
 - 🟡 `github.(*Client).once` — net/http.(*Client).Do · reached by test · added lines not measured
 - 🟡 `main.appendSummary` — os.OpenFile · reached by test · added lines not measured
-- 🟡 `main.run` — os.WriteFile · reached by test · added lines not measured
+
+All changes shown are reached from: main
 
 | Risk | Function | Change | Callers | Entry points | Added-line coverage |
 |---|---|---|---|---|---|
-| 🟡 | `main.run` | body (branch removed) · sensitive | 1 | main | reached by test · added lines not measured |
-| 🟡 | `main.appendSummary` | new · sensitive | 2 | main | reached by test · added lines not measured |
-| 🟡 | `main.detectCI` | new | 2 | main | reached by test · added lines not measured |
-| 🟡 | `main.githubPoster.Upsert` | new · +6 | 2 | main | reached by test · added lines not measured |
-| 🟡 | `main.gitlabPoster.Upsert` | new | 2 | main | reached by test · added lines not measured |
-| 🟡 | `main.resolveVersion` | new | 2 | main | reached by test · added lines not measured |
-| 🟡 | `pipeline.Run` | body | 2 | main | reached by test · added lines not measured |
-| 🟡 | `report.writeFooter` | body · wiring | 2 (2 pkgs) | main | reached by test · added lines not measured |
+| 🟡 | `main.appendSummary` | new · sensitive | 2 | — | reached by test · added lines not measured |
+| 🟡 | `main.detectCI` | new | 2 | — | reached by test · added lines not measured |
+| 🟡 | `main.githubPoster.Upsert` | new · +6 | 2 | — | reached by test · added lines not measured |
+| 🟡 | `main.gitlabPoster.Upsert` | new | 2 | — | reached by test · added lines not measured |
+| 🟡 | `main.resolveVersion` | new | 2 | — | reached by test · added lines not measured |
+| 🟡 | `pipeline.Run` | body | 2 | — | reached by test · added lines not measured |
+| 🟡 | `report.writeFooter` | body · wiring | 2 (2 pkgs) | — | reached by test · added lines not measured |
+| 🟡 | `main.run` | body (branch removed · 1 of 8 moved to `main.detectCI`) | 1 | — | reached by test · added lines not measured |
 | 🟡 | `github.(*statusError).Error` | new · wiring | 0 | — | reached by test · added lines not measured |
 
 <details><summary>main.githubPoster.Upsert +6 new</summary>
@@ -65,9 +66,9 @@ This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb1
 
 </details>
 
-🧪 Tests touched in this MR: 20 files
+🧪 Tests touched in this MR: 18 files
 
-<details><summary>Test files (20)</summary>
+<details><summary>Test files (18)</summary>
 
 - `cmd/mrimpact` (2): `ci_test.go`, `main_test.go`
 - `internal/arch` (2): `fromconfig_test.go`, `graph_test.go`
@@ -78,7 +79,6 @@ This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb1
 - `internal/github` (1): `github_test.go`
 - `internal/pipeline` (3): `e2e_test.go`, `entry_test.go`, `group_test.go`
 - `internal/registrations` (1): `registrations_test.go`
-- `internal/releasetest` (2): `install_test.go`, `release_files_test.go`
 - `internal/report` (1): `report_test.go`
 - `internal/risk` (1): `risk_test.go`
 - `internal/sensitive` (1): `sensitive_test.go`
@@ -90,25 +90,25 @@ This is the note mrimpact wrote for its own GitHub support (`mrimpact --base fb1
 
 ```mermaid
 flowchart RL
-  n0["🟡 main.run"]:::yellow
-  n1["main.main"]
-  n2["🟡 main.appendSummary"]:::yellow
-  n3["🟡 main.detectCI"]:::yellow
-  n4["🟡 main.githubPoster.Upsert"]:::yellow
-  n5["🟡 main.gitlabPoster.Upsert"]:::yellow
-  n6["🟡 main.resolveVersion"]:::yellow
-  n7["🟡 pipeline.Run"]:::yellow
-  n8["🟡 report.writeFooter"]:::yellow
-  n9["report.Render"]
+  n0["🟡 main.appendSummary"]:::yellow
+  n1["🟡 main.detectCI"]:::yellow
+  n2["🟡 main.githubPoster.Upsert"]:::yellow
+  n3["🟡 main.gitlabPoster.Upsert"]:::yellow
+  n4["🟡 main.resolveVersion"]:::yellow
+  n5["🟡 pipeline.Run"]:::yellow
+  n6["🟡 report.writeFooter"]:::yellow
+  n7["report.Render"]
+  n8["🟡 main.run"]:::yellow
+  n9["main.main"]
   n10["🟡 github.(*statusError).Error"]:::yellow
-  n1 --> n0
+  n7 --> n6
   n9 --> n8
-  n0 --> n2
-  n0 --> n3
-  n0 --> n4
-  n0 --> n5
-  n0 --> n6
-  n0 --> n7
+  n8 --> n0
+  n8 --> n1
+  n8 --> n2
+  n8 --> n3
+  n8 --> n4
+  n8 --> n5
   subgraph legend ["Legend"]
     direction LR
     lr["🔴 changed, not tested"]:::red
@@ -122,10 +122,6 @@ flowchart RL
 ```
 
 <details><summary>All callers (15)</summary>
-
-**`main.run`** (1)
-
-- depth 1: `main.main`
 
 **`main.appendSummary`** (2)
 
@@ -162,6 +158,10 @@ flowchart RL
 - depth 1: `report.Render`
 - depth 2: `main.run`
 
+**`main.run`** (1)
+
+- depth 1: `main.main`
+
 </details>
 
 <details><summary>⚠️ Limits of this analysis</summary>
@@ -172,7 +172,7 @@ flowchart RL
 - Now unused: uses through `reflect`, `//go:linkname` or other repositories are not seen; exported methods, and exported functions of packages other modules can import, are never listed.
 </details>
 
-<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact v0.0.0-20261110082548-59c71b95be3d · 1.0 s</sub>
+<sub>Rules: 🔴 untested with callers, or exported signature changed in an importable package · 🟡 partial, untested with no callers, a branch removed, or added lines not measured · 🟢 covered, or no added lines and reached by a test · wiring (straight-line setup) at most 🟡 · sensitive and untested 🔴 · mrimpact v0.4.0 · 1.8 s</sub>
 
 </details>
 
