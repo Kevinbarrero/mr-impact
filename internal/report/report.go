@@ -42,7 +42,7 @@ type FuncRow struct {
 	Display    string
 	Kind       string // "new" | "body" | "signature" | "signature (exported)"
 	Callers    []callgraph.Caller
-	CoverText  string            // "0 % (0/12)", "no added lines · reached by test", "reached by test", "not reached", "n/a"
+	CoverText  string            // "100 % (5/5)", "0 % (0/12)", "reached by test · added lines not measured", "no added lines · reached by test", "not reached", "n/a"
 	Registered []callgraph.Site  // where the function is passed as a value (handler/callback registration)
 	Entries    []callgraph.Entry // entry points reaching it (main/init/api/registration); nil in a degraded run
 	File       string            // repo-relative; shown only in a group's members list
@@ -1311,7 +1311,7 @@ func writeDiagram(b *strings.Builder, funcs []FuncRow) {
 		}
 	}
 
-	b.WriteString("**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested or a branch removed · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.\n\n")
+	b.WriteString("**How to read the diagram:** coloured boxes are functions this MR changed (🔴 not tested · 🟡 partly tested, branch removed or added lines not measured · 🟢 tested); plain boxes are callers the MR did not change; an arrow points from a caller to the function it calls; a dashed arrow means the function is passed as a callback (registered) and called through it. Every caller is listed under *All callers*.\n\n")
 	b.WriteString("```mermaid\nflowchart RL\n")
 	usedClass := map[string]bool{}
 	for _, k := range order {
@@ -1333,7 +1333,7 @@ func writeDiagram(b *strings.Builder, funcs []FuncRow) {
 	b.WriteString("  subgraph legend [\"Legend\"]\n    direction LR\n")
 	for _, l := range []struct{ id, label, class string }{
 		{"lr", "🔴 changed, not tested", "red"},
-		{"ly", "🟡 partly tested / branch removed", "yellow"},
+		{"ly", "🟡 partly tested, branch removed or added lines not measured", "yellow"},
 		{"lg", "🟢 changed, tested", "green"},
 		{"lc", "caller, not changed", ""},
 	} {
