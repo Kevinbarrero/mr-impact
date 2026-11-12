@@ -132,10 +132,12 @@ func Rate(in Input) Result {
 		return Result{Yellow, fmt.Sprintf("partly tested, %d %%", in.Covered*100/in.Total)}
 	case untested && in.NonTestCallers == 0:
 		return Result{Yellow, "untested, no callers"}
+	case in.BranchesRemoved:
+		// Before "not measured": removed control flow is the more specific
+		// warning, and Look at first ranks unmeasured rows last.
+		return Result{Yellow, "branch removed"}
 	case !in.HasProfile && !in.ReachUnknown && in.TestReached && in.AddedLines > 0:
 		return Result{Yellow, "added lines not measured"}
-	case in.BranchesRemoved:
-		return Result{Yellow, "branch removed"}
 	default:
 		return Result{Green, ""}
 	}

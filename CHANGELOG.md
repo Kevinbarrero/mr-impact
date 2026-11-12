@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- **Static mode (no coverprofile):** a function with added lines that a test reaches is 🟡, not 🟢, because whether the added lines ran is not measured; its cover cell reads `reached by test · added lines not measured`. A function with no added lines that a test reaches reads `no added lines · reached by test` and stays 🟢. A degraded run without a call graph is unchanged (`n/a`).
+- **Static mode (no coverprofile):** a function with added lines that a test reaches is 🟡, not 🟢, because whether the added lines ran is not measured; its cover cell reads `reached by test · added lines not measured`. A function with no added lines that a test reaches reads `no added lines · reached by test` and stays 🟢. A degraded run without a call graph is unchanged (`n/a`). When such a function also lost a branch, its reason is `branch removed`, so Look at first does not rank it with the unmeasured rows.
 - **Legend:** the footer rules now say 🟡 includes "added lines not measured" and 🟢 is "covered, or no added lines and reached by a test".
 
 ### Fixed

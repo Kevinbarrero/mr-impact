@@ -322,6 +322,7 @@ func TestRate_Reasons(t *testing.T) {
 		{"no callers", Input{HasProfile: true, Total: 3}, Yellow, "untested, no callers"},
 		{"unmeasured", Input{TestReached: true, AddedLines: 2}, Yellow, "added lines not measured"},
 		{"branch", Input{TestReached: true, BranchesRemoved: true, HasProfile: true}, Yellow, "branch removed"},
+		{"branch beats unmeasured", Input{TestReached: true, AddedLines: 2, BranchesRemoved: true}, Yellow, "branch removed"},
 		{"green", Input{TestReached: true}, Green, ""},
 	}
 	for _, tt := range tests {
