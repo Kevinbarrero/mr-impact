@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-12
+
 ### Added
 
 - **Look at first:** a `👉 **Look at first:** …` line names up to three rows, riskiest first, each with why (`untested, 3 callers`, `added lines not measured`), then `+N` for the rest, so a reviewer starts in the right place.
