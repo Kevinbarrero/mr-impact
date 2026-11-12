@@ -6,9 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- **Look at first:** a `👉 **Look at first:** …` line names the riskiest row and why (`untested, 3 callers`, `added lines not measured`), so a reviewer starts in the right place.
+- **Look at first:** a `👉 **Look at first:** …` line names up to three rows, riskiest first, each with why (`untested, 3 callers`, `added lines not measured`), then `+N` for the rest, so a reviewer starts in the right place.
 - **Compact layout:** above 20 rows the table shows every 🔴 row and the first 10 🟡 rows (rows rated by `added lines not measured` taken last, here and in Look at first), and all other rows go in a second table under `<details>`; the 50-row cap covers both tables together and no row appears twice.
-- **`📦 go.work` line:** when the head is built in a Go workspace, the note states the `go.work` in effect, the other modules it uses (and whether the analysed module requires or replaces them), and that the base was built from `go.mod`.
+- **`📦 go.work` line:** when the head is built in a Go workspace, the note states the `go.work` in effect, the other modules it uses (and whether the analysed module requires or replaces them), and that the base was built from `go.mod`. A `go.work` that uses only the analysed module reads ``📦 go.work: `go.work` (no other modules)``; a `--dir` reached through a symlink no longer lists itself as another module.
 - **Moved branches:** a removed branch whose exact text is added in another function now names it: ``body (branch moved to `pkg.F`)`` when every removed branch moved, ``(branch removed · 1 of 3 moved to `pkg.F`)`` when some did. A function whose removed branches all moved is no longer held by the branch-removed rule. A destination counts when the branch starts on an added line or lies in a function new in this MR. A generic branch (`return nil`, `return err`, `if err != nil`, `default`, …) moves only to a function the changed function's head body calls or uses as a value; each added copy accounts for one removed branch across all functions, taken in name order.
 
 ### Changed
